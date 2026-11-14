@@ -490,6 +490,9 @@ def run_session(args, cmd, desc, schemas, rep, transport, log_dir, content, laun
         except socket.timeout:
             rep.add(sec, "connects within 10 s", "FAIL", "the engine never connected")
             return
+        except OSError as e:
+            rep.add(sec, "engine starts", "FAIL", str(e))
+            return
         if transport in ("tcp", "adb"):
             rep.ok(sec, "connects within 10 s", s.connected - s.started <= 10, ms=(s.connected - s.started) * 1000)
             a = s.auth or {}
@@ -546,7 +549,8 @@ def run_session(args, cmd, desc, schemas, rep, transport, log_dir, content, laun
         rep.add(sec, "channel stays open", "FAIL", "the engine closed the channel early; see %s" % s.log_path)
     finally:
         if s.applets: rep.add(sec, "applet_request answered", "PASS", "%d" % s.applets)
-        rep.ok(sec, "messages match the schemas", not s.schema_errors, "; ".join(s.schema_errors[:3]))
+        if s.events or s.schema_errors:
+            rep.ok(sec, "messages match the schemas", not s.schema_errors, "; ".join(s.schema_errors[:3]))
         s.kill()
 
 
@@ -755,7 +759,7 @@ def run_close_test(args, cmd, schemas, rep, transport, log_dir, content):
         rc = s.wait_exit(5)
         rep.ok(sec, "exits within 5 s when the channel closes", rc is not None,
                "exit code %s" % rc if rc is not None else "still running", (time.monotonic() - t) * 1000)
-    except (Closed, socket.timeout):
+    except (Closed, OSError):
         rep.add(sec, "exits within 5 s when the channel closes", "FAIL", "could not set up the session")
     finally:
         s.kill()
@@ -780,6 +784,8 @@ def main():
     args = ap.parse_args()
     cmd = args.engine[1:] if args.engine and args.engine[0] == "--" else list(args.engine)
     if not cmd and not args.adb: ap.error("no engine command given")
+    if cmd:  # Windows' CreateProcess does not search a relative path with forward slashes
+        cmd[0] = os.path.abspath(cmd[0]) if os.path.exists(cmd[0]) else (shutil.which(cmd[0]) or cmd[0])
 
     schemas = Schemas(SCHEMA_DIR)
     rep = Report()
