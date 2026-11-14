@@ -47,7 +47,7 @@ class EcpFrontend(private val context: Context) {
         val component: ComponentName get() = ComponentName(packageName, activity)
     }
 
-    data class LaunchOptions(
+    data class LaunchOptions @JvmOverloads constructor(
         val displayId: Int? = null,     // ActivityOptions.setLaunchDisplayId
         val fullscreen: Boolean = true,
         val path: String? = null,       // EXTRA_PATH, for engines with all-files access
@@ -81,6 +81,7 @@ class EcpFrontend(private val context: Context) {
      * (in the background) for it to connect. [menuIntent] is the frontend's own activity that
      * shows its menu over the game; it is wrapped in the MENU_INTENT PendingIntent.
      */
+    @JvmOverloads
     fun start(
         engine: Engine,
         content: Uri,
@@ -117,7 +118,8 @@ class EcpFrontend(private val context: Context) {
      * Puts the engine back in front, then sends `resume` (section 6.2, step 5). Call it from the
      * frontend's foreground activity, which is what allows the activity start.
      */
-    fun resume(session: EcpSession, onResult: (JSONObject?) -> Unit = {}) {
+    @JvmOverloads
+    fun resume(session: EcpSession, onResult: ResultCallback = ResultCallback {}) {
         bringToFront(session)
         session.requestAsync("resume", JSONObject(), 5000, onResult)
     }
@@ -155,7 +157,12 @@ class EcpFrontend(private val context: Context) {
  * hellos, requests matched to results by id, and events. Plain Java networking, so it also runs on
  * the JVM (the unit tests use it).
  */
-class EcpSession(
+/** Receives a result, or null when none arrived (timeout, channel closed). */
+fun interface ResultCallback {
+    fun onResult(result: JSONObject?)
+}
+
+class EcpSession @JvmOverloads constructor(
     private val listener: Listener,
     private val executor: Executor = MainExecutor,
     frontendName: String = "android-frontend",
@@ -263,6 +270,7 @@ class EcpSession(
      * Sends a request and blocks until its result (not on the main thread). Throws
      * [EcpException] with the engine's error, or `timeout` / `closed`.
      */
+    @JvmOverloads
     fun request(type: String, fields: JSONObject = JSONObject(), timeoutMs: Long = 5000): JSONObject {
         val latch = CountDownLatch(1)
         var result: JSONObject? = null
@@ -280,17 +288,19 @@ class EcpSession(
     }
 
     /** Sends a request; [onResult] runs on the executor with the result, or null on timeout/close. */
-    fun requestAsync(type: String, fields: JSONObject = JSONObject(), timeoutMs: Long = 5000, onResult: (JSONObject?) -> Unit) {
+    @JvmOverloads
+    fun requestAsync(type: String, fields: JSONObject = JSONObject(), timeoutMs: Long = 5000, onResult: ResultCallback) {
         Thread({
             val r = try { request(type, fields, timeoutMs) } catch (e: EcpException) {
                 if (e.code == "timeout" || e.code == "closed") null
                 else JSONObject().put("type", "result").put("ok", false).put("error", Ecp.error(e.code, e.message, e.detail))
             }
-            executor.execute { onResult(r) }
+            executor.execute { onResult.onResult(r) }
         }, "ecp-request").apply { isDaemon = true }.start()
     }
 
     /** Answers a request the engine sent. */
+    @JvmOverloads
     fun reply(id: Long, fields: JSONObject = JSONObject(), ok: Boolean = true) {
         channel?.send(fields.put("type", "result").put("id", id).put("ok", ok))
     }
