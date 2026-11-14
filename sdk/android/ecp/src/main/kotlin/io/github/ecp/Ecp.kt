@@ -23,19 +23,26 @@ object Ecp {
 
     const val MAX_FRAME = 16 * 1024 * 1024
 
-    /** Capabilities whose requests the engine side routes (section 6). */
-    internal val REQUEST_CAPABILITY = mapOf(
-        "launch" to null, "stop" to null,
-        "pause" to "pause", "resume" to "pause",
-        "save_state" to "states", "load_state" to "states",
-        "list_states" to "states", "delete_state" to "states",
-        "get_schema" to "settings", "get_settings" to "settings", "set_setting" to "settings",
-        "reset" to "reset", "set_speed" to "fast_forward", "set_rewind" to "rewind",
-        "screenshot" to "screenshot", "set_volume" to "volume", "hud_level" to "hud",
-        "notify" to "notify", "set_cheats" to "cheats", "list_discs" to "discs", "set_disc" to "discs",
+    /**
+     * The capabilities that allow each request (section 6): any one of them will do, and an empty
+     * list means every engine handles it. `resume` also ends the menu hand-over (6.2).
+     */
+    internal val REQUEST_CAPABILITY: Map<String, List<String>> = mapOf(
+        "launch" to emptyList(), "stop" to emptyList(),
+        "pause" to listOf("pause"), "resume" to listOf("pause", "menu"),
+        "save_state" to listOf("states"), "load_state" to listOf("states"),
+        "list_states" to listOf("states"), "delete_state" to listOf("states"),
+        "get_schema" to listOf("settings"), "get_settings" to listOf("settings"),
+        "set_setting" to listOf("settings"), "reset" to listOf("reset"),
+        "set_speed" to listOf("fast_forward", "slow_motion"), "set_rewind" to listOf("rewind"),
+        "screenshot" to listOf("screenshot"), "set_volume" to listOf("volume"), "hud_level" to listOf("hud"),
+        "notify" to listOf("notify"), "set_cheats" to listOf("cheats"),
+        "list_discs" to listOf("discs"), "set_disc" to listOf("discs"),
     )
 
     /** An error object: `{"code":..., "message":..., "detail":...}`. */
+    @JvmStatic
+    @JvmOverloads
     fun error(code: String, message: String? = null, detail: String? = null): JSONObject =
         JSONObject().put("code", code).apply {
             if (message != null) put("message", message)
@@ -46,6 +53,7 @@ object Ecp {
      * A picture value, `{"png":..., "width":..., "height":...}`. Bitmaps over 4 megapixels are
      * halved until they fit, which keeps the frame well under the 16 MiB limit.
      */
+    @JvmStatic
     fun picture(bitmap: Bitmap): JSONObject {
         var bmp = bitmap
         while (bmp.width.toLong() * bmp.height > 4_000_000L)
@@ -55,12 +63,14 @@ object Ecp {
         return picture(out.toByteArray(), bmp.width, bmp.height)
     }
 
+    @JvmStatic
     fun picture(png: ByteArray, width: Int, height: Int): JSONObject = JSONObject()
         .put("png", Base64.encodeToString(png, Base64.NO_WRAP))
         .put("width", width)
         .put("height", height)
 
     /** Decodes a picture value, or null. */
+    @JvmStatic
     fun bitmap(picture: JSONObject?): Bitmap? {
         val b64 = picture?.optString("png").orEmpty()
         if (b64.isEmpty()) return null

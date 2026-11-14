@@ -17,6 +17,8 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -27,15 +29,29 @@ import java.util.concurrent.atomic.AtomicLong
  * engine = EcpEngine(descriptor, callbacks).also { it.connect(session) }
  * ```
  *
- * Callbacks run on [executor], the main thread by default. Every [Request] is answered exactly
- * once with [Request.ok] or [Request.error], from any thread and at any time (a save state can
- * answer when the emulation thread has written it). Event methods may be called from any thread.
+ * Threads: requests (and onHello, onResult) run one at a time, in order, on [executor]. By default
+ * that is a background thread of the engine's own, so a handler may block on the emulator (a save
+ * state that takes seconds). Pass [MAIN_THREAD] to run them on the main thread instead, and then
+ * never block in them. `stop` and [Callbacks.onClosed] run on a separate control thread
+ * ([controlExecutor]), so the end of a session is never queued behind a slow request: handleStop
+ * may run while another handler is still busy.
+ *
+ * Every [Request] is answered exactly once with [Request.ok] or [Request.error], from any thread
+ * and at any time. Event methods may be called from any thread.
  */
-class EcpEngine(
+class EcpEngine @JvmOverloads constructor(
     descriptor: JSONObject,
     private val callbacks: Callbacks,
-    private val executor: Executor = MainExecutor,
+    executor: Executor? = null,
+    controlExecutor: Executor? = null,
 ) {
+    private val owned = mutableListOf<ExecutorService>()
+    private val executor: Executor = executor ?: worker("ecp-requests")
+    private val controlExecutor: Executor = controlExecutor ?: worker("ecp-control")
+
+    private fun worker(name: String): ExecutorService =
+        Executors.newSingleThreadExecutor { Thread(it, name).apply { isDaemon = true } }.also { owned += it }
+
     /** What the frontend passed in the PLAY intent (section 3, Android). */
     data class Session(
         val port: Int,
@@ -48,6 +64,7 @@ class EcpEngine(
     ) {
         companion object {
             /** The session in [intent], or null when it has no PORT: run as at level 0. */
+            @JvmStatic
             fun from(intent: Intent?): Session? {
                 if (intent == null) return null
                 val port = intent.getIntExtra(Ecp.EXTRA_PORT, 0)
@@ -66,25 +83,34 @@ class EcpEngine(
         }
     }
 
-    /** A request from the frontend. */
+    /** A request from the frontend. Java sees the field accessors as getInt, getBoolean, getDouble, getString. */
     class Request internal constructor(
         private val engine: EcpEngine,
         val id: Long,
         val type: String,
         val msg: JSONObject,
     ) {
+        @JvmOverloads
+        @JvmName("getInt")
         fun int(key: String, fallback: Int = -1): Int = if (msg.has(key)) msg.optInt(key, fallback) else fallback
+        @JvmOverloads
+        @JvmName("getBoolean")
         fun bool(key: String, fallback: Boolean = false): Boolean = msg.optBoolean(key, fallback)
+        @JvmOverloads
+        @JvmName("getDouble")
         fun double(key: String, fallback: Double = Double.NaN): Double = msg.optDouble(key, fallback)
+        @JvmName("getString")
         fun string(key: String): String? = if (msg.has(key) && !msg.isNull(key)) msg.optString(key) else null
 
         /** Answers ok, with the result fields in [fields]. */
+        @JvmOverloads
         fun ok(fields: JSONObject? = null) {
             val res = fields ?: JSONObject()
             res.put("type", "result").put("id", id).put("ok", true)
             engine.send(res)
         }
 
+        @JvmOverloads
         fun error(code: String, message: String? = null, detail: String? = null) {
             engine.send(
                 JSONObject().put("type", "result").put("id", id).put("ok", false)
@@ -142,6 +168,7 @@ class EcpEngine(
     private val nextId = AtomicLong()
     @Volatile private var channel: EcpChannel? = null
     @Volatile private var frontendCaps: Set<String> = emptySet()
+    @Volatile private var pausedReported = false
     @Volatile var session: Session? = null
         private set
 
@@ -163,12 +190,10 @@ class EcpEngine(
                 val hello = JSONObject(descriptor.toString()).put("type", "hello").put("protocol", Ecp.PROTOCOL)
                 if (!ch.send(hello)) throw java.io.IOException("the channel closed during hello")
                 if (session.id != null) Log.i(TAG, "session ${session.id}")
-                ch.startReader("ecp-engine", ::dispatch) {
-                    executor.execute { callbacks.onClosed("the frontend closed the channel") }
-                }
+                ch.startReader("ecp-engine", ::dispatch) { closed("the frontend closed the channel") }
             } catch (e: Exception) {
                 Log.w(TAG, "cannot connect to the frontend: $e")
-                executor.execute { callbacks.onClosed(e.toString()) }
+                closed(e.toString())
             }
         }, "ecp-connect").start()
     }
@@ -177,8 +202,20 @@ class EcpEngine(
         channel?.close()
     }
 
+    private fun closed(reason: String) = controlExecutor.execute {
+        try {
+            callbacks.onClosed(reason)
+        } finally {
+            owned.forEach { it.shutdown() } // what is queued still runs; nothing new arrives
+        }
+    }
+
+    /** True if the last of paused()/resumed() sent was paused(). */
+    val isPausedReported: Boolean get() = pausedReported
+
     // ---- events (sections 5 and 6)
 
+    @JvmOverloads
     fun loading(progress: Double? = null, text: String? = null) = event("loading") {
         if (progress != null) put("progress", progress.coerceIn(0.0, 1.0))
         if (text != null) put("text", text)
@@ -186,14 +223,28 @@ class EcpEngine(
 
     fun firstFrame() = event("first_frame")
     fun running() = event("running")
-    fun paused(reason: String) = event("paused") { put("reason", reason) }
-    fun resumed() = event("resumed")
-
-    fun stopped(reason: String, errorCode: String? = null, message: String? = null) = event("stopped") {
-        put("reason", reason)
-        if (errorCode != null) put("error", Ecp.error(errorCode, message))
+    /**
+     * A pause the frontend can see (reason `frontend`, `menu`, `focus` or `applet`). Do not report
+     * the emulator's own short pauses, such as the one around a state save or load.
+     */
+    fun paused(reason: String): Boolean {
+        pausedReported = true
+        return event("paused") { put("reason", reason) }
     }
 
+    fun resumed(): Boolean {
+        pausedReported = false
+        return event("resumed")
+    }
+
+    @JvmOverloads
+    fun stopped(reason: String, errorCode: String? = null, message: String? = null, detail: String? = null) =
+        event("stopped") {
+            put("reason", reason)
+            if (errorCode != null) put("error", Ecp.error(errorCode, message, detail))
+        }
+
+    @JvmOverloads
     fun perf(
         fps: Double, targetFps: Double, speed: Double, frameMs: Double,
         cpuMs: Double? = null, gpuMs: Double? = null, shadersBuilding: Boolean? = null,
@@ -205,20 +256,21 @@ class EcpEngine(
     }
 
     /**
-     * The menu hand-over (section 6.2): the engine has paused; this sends `paused` (menu) and
-     * `menu_request` with [frame], then fires MENU_INTENT. Call it while the engine's activity is
+     * The menu hand-over (section 6.2): the engine has paused; this sends `paused` (menu) unless
+     * a pause is already reported, then `menu_request` with [frame], and fires MENU_INTENT. Call it while the engine's activity is
      * in the foreground, which is what lets Android start the frontend's activity.
      * Returns false if the frontend did not take the `menu` capability.
      */
     fun requestMenu(context: Context, frame: Bitmap): Boolean {
         if (!frontendHas("menu")) return false
-        paused("menu")
+        if (!pausedReported) paused("menu")
         event("menu_request") { put("frame", Ecp.picture(frame)) }
         session?.menuIntent?.let { sendMenuIntent(context, it) }
         return true
     }
 
     /** Sends a request to the frontend (applet_request); the answer goes to [Callbacks.onResult]. */
+    @JvmOverloads
     fun request(type: String, fields: JSONObject = JSONObject()): Long {
         val id = nextId.incrementAndGet()
         send(fields.put("type", type).put("id", id))
@@ -247,12 +299,13 @@ class EcpEngine(
             type == "result" -> executor.execute { callbacks.onResult(msg.optLong("id", -1), msg) }
             msg.has("id") -> {
                 val r = Request(this, msg.optLong("id"), type, msg)
-                val allowed = when (type) {
-                    "set_speed" -> "fast_forward" in capabilities || "slow_motion" in capabilities
-                    else -> Ecp.REQUEST_CAPABILITY.containsKey(type) &&
-                        Ecp.REQUEST_CAPABILITY[type].let { it == null || it in capabilities }
+                val needs = Ecp.REQUEST_CAPABILITY[type]
+                val allowed = needs != null && (needs.isEmpty() || needs.any { it in capabilities })
+                when {
+                    !allowed -> r.unsupported()
+                    type == "stop" -> controlExecutor.execute { callbacks.handleStop(r) }
+                    else -> executor.execute { route(r) }
                 }
-                if (!allowed) r.unsupported() else executor.execute { route(r) }
             }
         }
     }
@@ -287,12 +340,18 @@ class EcpEngine(
     companion object {
         private const val TAG = "ECP"
 
+        /** Pass as `executor` to run request handlers on the main thread. */
+        @JvmField
+        val MAIN_THREAD: Executor = MainExecutor
+
         /** True if [intent] is the frontend bringing the running game back (no new session). */
+        @JvmStatic
         fun isBringBack(intent: Intent?, current: Session?): Boolean =
             intent != null && current != null &&
                 (intent.getIntExtra(Ecp.EXTRA_PORT, 0) == 0 || intent.getStringExtra(Ecp.EXTRA_TOKEN) == current.token)
 
         /** Reads a descriptor from a raw resource (the `io.github.ecp.descriptor` meta-data). */
+        @JvmStatic
         fun descriptor(context: Context, rawRes: Int): JSONObject =
             context.resources.openRawResource(rawRes).bufferedReader().use { JSONObject(it.readText()) }
 
@@ -300,6 +359,7 @@ class EcpEngine(
          * Fires MENU_INTENT with the sender's opt-in to start an activity from the background on
          * Android 14+, which the platform otherwise refuses for PendingIntents.
          */
+        @JvmStatic
         fun sendMenuIntent(context: Context, menu: PendingIntent) {
             val options = ActivityOptions.makeBasic()
             if (Build.VERSION.SDK_INT >= 36) {
@@ -316,6 +376,7 @@ class EcpEngine(
         }
 
         /** Immersive full screen, for sessions that ask for it (EXTRA_FULLSCREEN). */
+        @JvmStatic
         fun applyFullscreen(activity: Activity, fullscreen: Boolean) {
             if (!fullscreen) return
             val window = activity.window

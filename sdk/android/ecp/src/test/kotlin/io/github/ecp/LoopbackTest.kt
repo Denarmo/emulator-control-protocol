@@ -106,6 +106,39 @@ class LoopbackTest {
         closed.waitOk()
     }
 
+    @Test
+    fun stopIsNotQueuedBehindASlowRequest() {
+        val events = Events()
+        val session = EcpSession(events, direct)
+        session.acceptInBackground()
+        val saving = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val menuOnly = JSONObject(descriptor.toString())
+            .put("capabilities", org.json.JSONArray(listOf("menu", "states")))
+        val engine = EcpEngine(menuOnly, object : EcpEngine.Callbacks {   // default threads
+            override fun handleLaunch(r: EcpEngine.Request) = r.ok()
+            override fun handleStop(r: EcpEngine.Request) = r.ok()
+            override fun handleResume(r: EcpEngine.Request) = r.ok()
+            override fun handleSaveState(r: EcpEngine.Request) {
+                saving.countDown()
+                release.await(10, TimeUnit.SECONDS) // a state save that blocks on the emulator
+                r.ok(JSONObject().put("slot", 1).put("time", 1L))
+            }
+        })
+        engine.connect(EcpEngine.Session(session.port, session.token, null, null, true, null, null))
+        events.ready.waitOk()
+        session.request("launch", JSONObject().put("content", "x"))
+        session.request("resume") // valid with menu alone (SPEC 6.2)
+
+        val saved = CountDownLatch(1)
+        session.requestAsync("save_state", JSONObject().put("slot", 1), 10_000) { saved.countDown() }
+        saving.waitOk()
+        session.request("stop", timeoutMs = 1000) // answered while save_state still runs
+        release.countDown()
+        saved.waitOk()
+        session.close()
+    }
+
     private fun expectError(code: String, block: () -> Unit) {
         try {
             block()

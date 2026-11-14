@@ -60,7 +60,10 @@ class PlayActivity : Activity(), EcpEngine.Callbacks, Choreographer.FrameCallbac
             game.gameId = intent.data?.lastPathSegment ?: "standalone"
             startPlaying() // level 0
         } else {
-            engine = EcpEngine(EcpEngine.descriptor(this, R.raw.ecp), this).also { it.connect(session) }
+            // Every handler here is quick and touches the view's state, so all of them, stop
+            // included, run on the main thread. An emulator whose calls block keeps the defaults.
+            val desc = EcpEngine.descriptor(this, R.raw.ecp)
+            engine = EcpEngine(desc, this, EcpEngine.MAIN_THREAD, EcpEngine.MAIN_THREAD).also { it.connect(session) }
         }
     }
 
