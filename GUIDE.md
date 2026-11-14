@@ -12,6 +12,10 @@ Here the SDKs do the protocol work and you connect them to code you already have
 | An Android app whose core runs everything | `sdk/c` inside the native code, with the port and token passed down through JNI |
 | A frontend | `sdk/cpp-frontend` (header-only C++17) or `sdk/android` (`EcpFrontend`) |
 
+PSX2's [ECP.md](https://github.com/Denarmo/PSX2/blob/ecp/ECP.md) is a worked example: a
+PCSX2-based Android emulator at level 2, with each request mapped to its core and the reason for
+every capability it leaves out.
+
 Start at level 1 (launch, lifecycle, stop) and add level 2 controls one capability at a time.
 List a capability only when its requests work, because the frontend greys out anything you leave
 out. `examples/test-engine` implements every capability except `applets`. Read it next to this
@@ -79,8 +83,9 @@ int main(int argc, char **argv) {
 
 Rules from SPEC section 9 that affect start-up:
 
-- **No window before `launch`.** Initialise what you need, but create the window when the game
-  arrives.
+- **Nothing interactive before `launch`.** On desktop that means no window: initialise what you
+  need, but create the window when the game arrives. (On Android the activity is already on
+  screen; see 3.1.)
 - **No profile picker or first-run wizard.** If something is missing, the frontend learns it from
   `launch`'s error (`bios_missing`, `keys_missing`) or from the `status` one-shot.
 - **Standard output belongs to the channel.** On stdio, `ecp_open()` moves your `stdout` to
@@ -114,6 +119,11 @@ as you already do for your own menus.
 Every request gets exactly one answer. It does not have to be immediate: keep `r->id` and answer
 when the work is done. All `ecp_send*` / `ecp_reply*` functions are thread-safe.
 
+Put blocking emulator calls (a state save can take seconds) on your emulation thread or an
+executor, never inside the handler that the poll loop runs. Keep `stop` on a path of its own:
+answer it at once and shut down, even while an earlier request is still working. The frontend
+ends the engine 5 s after `stop`, whatever is still queued.
+
 ```c
 static void on_save_state(void *user, ecp_conn *c, const ecp_request *r) {
     int slot = (int)ecp_json_int(ecp_json_get(r->msg, "slot"), -1);
@@ -141,13 +151,13 @@ Most emulators already have every piece. The work is mostly wiring:
 
 | Request | Usually maps to | Notes |
 |---|---|---|
-| `launch` | your "boot game" path | Answer once loading has begun, then send `loading`, `first_frame` and `running`. Refuse with a typed error: `bios_missing`, `content_invalid`, `gpu_unsupported`. `content` is the path on desktop; on Android it is `"intent"`. |
-| `stop` | "shut down VM" + save SRAM | Answer, send `stopped` (`reason:"frontend"`), exit. The frontend kills you 5 s later. |
-| `pause` / `resume` | your pause toggle | Send `paused` (`frontend`) / `resumed`. On `resume`, ignore buttons still held until they are released: clear the input state (PSX2 has `resetKeyStatus()`). |
-| `save_state` / `load_state` | your slot functions | ECP slots are 0-99 (0 is the frontend's resume slot), stored by `game_id`. If your slots are 1-10 or keyed by serial, save ECP states to explicit paths such as `<data>/ecp/<game_id>/slot<N>`. `load_state` on an empty slot fails with `slot_empty`; a state from another version fails with `state_incompatible`. |
+| `launch` | your "boot game" path | Answer once loading has begun, then send `loading`, `first_frame` and `running`. `first_frame` is the first frame the game itself drew, not the black frame your renderer shows while it boots: hook the point where your own loading screen goes away. Refuse with a typed error: `bios_missing`, `content_invalid`, `gpu_unsupported`. `content` is the path on desktop; on Android it is `"intent"`. |
+| `stop` | "shut down VM" + save SRAM | Answer, send `stopped` (`reason:"frontend"`), exit. The frontend kills you 5 s later. Keep `stop` off the queue of slow requests (see 2.3). |
+| `pause` / `resume` | your pause toggle | Send `paused` (`frontend`) / `resumed`. Do not report your internal pauses, such as the one your core takes around a state save or load: `paused` is for pauses the frontend can see. `resume` also ends the menu hand-over, so it must work when you list `menu` without `pause`. On `resume`, ignore buttons still held until they are released (see 3.4). |
+| `save_state` / `load_state` | your slot functions | ECP slots are 0-99. Slot 0 is the frontend's resume slot: it saves there when the player leaves and loads it when they come back. Key states by `game_id`, or by your own per-game identity (disc serial, CRC) if you already have one. The slots may be the ones your own UI shows, so PCSX2-style `<serial>.<crc>.NN` states work as they are. `load_state` on an empty slot fails with `slot_empty`; a state from another version fails with `state_incompatible`. A state saved before `first_frame` may have no thumbnail. |
 | `list_states` / `delete_state` | a directory listing / `remove()` | Thumbnails are optional and need `state_thumbnails`. |
 | `get_schema`, `get_settings`, `set_setting` | your settings layer | See 2.5. |
-| `set_speed` | fast-forward / turbo toggle, frame limiter | `fast_forward` with an optional `factor`; `slow_motion` is `factor` < 1. |
+| `set_speed` | fast-forward / turbo toggle, frame limiter | Each request sets the whole speed state: `fast_forward:true` (with an optional `factor` > 1) is fast-forward, `factor` < 1 is slow motion, and `fast_forward:false`, `factor:1` or neither field is normal speed. |
 | `screenshot` | your screenshot code | Answer with `image` (a picture), or write a PNG to `path` if the request has one. |
 | `reset` | soft/hard reset | `hard` tells which. |
 | `set_volume`, `hud_level`, `notify` | output volume, FPS overlay, OSD message | |
@@ -170,6 +180,9 @@ changes with `set_setting`. **Never write them to your config files.** An overla
 in memory works well. An emulator with layered settings (PCSX2's `LayeredSettingsInterface`, for
 example) can add one more layer that the ECP session fills and drops at the end.
 
+- If your core applies per-game settings while it boots (PCSX2's game settings and patches do),
+  it can overwrite what `launch` sent. Apply the launch settings again after `first_frame` where
+  they differ.
 - Use the standard keys (`video.internal_scale`, `video.aspect`, `audio.volume`, `speed.limit`, and
   the rest in SPEC 6.4) for settings you already have. The frontend can then show them in its own
   menus without knowing your engine. `ecp-probe` checks their types.
@@ -188,9 +201,14 @@ When the frontend takes `menu`, the player's menu button opens the frontend's me
 1. `launch` carries `menu_chord`, for example `["l3","r3"]` in RetroPad names. Detect it in your
    input layer, where your own hotkeys are handled. A touch button of your own may also open it.
 2. Pause, grab the current frame, and call
-   `ecp_send_menu_request(c, pixels, w, h, stride, flags)`. It sends `paused` (`menu`) and
-   then `menu_request` with the picture. Pass `ECP_PNG_BGRA` for BGRA framebuffers. Large
-   frames are halved until they fit.
+   `ecp_send_menu_request(c, pixels, w, h, stride, flags)`. It sends `paused` (`menu`), unless
+   you have already reported a pause, then `menu_request` with the picture. Pass `ECP_PNG_BGRA`
+   for BGRA framebuffers. Large frames are halved until they fit.
+
+   Grab the game's picture, not the window: the frame at its internal resolution, corrected to
+   the game's display aspect (a 640x448 PS2 frame shown at 4:3 becomes 640x480), then scaled
+   down if needed. The frontend draws its menu over this picture, so a stretched or letterboxed
+   frame looks wrong behind it.
 3. Do nothing else. The frontend raises its window, draws its menu over the frame and sends the
    player's choices (`save_state`, `set_setting`, and so on) while you stay paused.
 4. On `resume`, raise your window and continue.
@@ -206,7 +224,7 @@ always save (battery saves, memory cards), then exit within 5 s. Never keep runn
 
 ## 3. Android engines (sdk/android)
 
-### 3.1 Manifest
+### 3.1 Manifest and build
 
 Add a PLAY activity. Keep it separate from your launcher activity, so the library screen and
 first-run flow never appear in a frontend session:
@@ -230,8 +248,45 @@ first-run flow never appear in a frontend session:
 Put the descriptor in `res/raw/ecp.json`. `singleTask` matters: when the frontend brings the game
 back on `resume`, it must reach the running activity, not a new one.
 
-Add the module from this repository. You can include `sdk/android/ecp` as a Gradle project or copy
-its four Kotlin files. It has no dependencies.
+SPEC 9's "nothing interactive before `launch`" cannot mean "no window" on Android, because the
+activity is on screen as soon as the frontend starts it. Show black, or a neutral loading screen,
+until the game boots. No menus, prompts or first-run screens.
+
+**Adding the SDK.** `sdk/android/ecp` is a plain Android library module with no dependencies
+beyond the Kotlin standard library. Vendor it: copy the directory into your project (as PSX2
+does with `ecp-sdk/`, or as a git subtree), then:
+
+```kotlin
+// settings.gradle.kts
+include(":ecp")
+project(":ecp").projectDir = file("ecp-sdk")
+
+// app/build.gradle.kts
+dependencies { implementation(project(":ecp")) }
+```
+
+The module's build file works with either toolchain, so you don't need to edit it:
+
+- **AGP 9 or later** (built-in Kotlin): nothing else. This includes Java-only apps, because AGP 9
+  compiles the module's Kotlin itself.
+- **AGP 8.x**: the build needs the Kotlin Android plugin on its classpath. Declare it once in the
+  root `build.gradle.kts` and the module applies it: `id("org.jetbrains.kotlin.android") version "2.2.20" apply false`.
+
+From Java the API reads without Kotlin's defaults or `Companion`:
+
+```java
+EcpEngine.Session session = EcpEngine.Session.from(getIntent());
+EcpEngine engine = new EcpEngine(EcpEngine.descriptor(this, R.raw.ecp), callbacks);
+engine.connect(session);
+// in a handler
+int slot = r.getInt("slot");
+r.ok(new JSONObject().put("slot", slot).put("time", now).put("thumbnail", Ecp.picture(frame)));
+engine.stopped("error", "crashed", "The emulator stopped.", "GS thread: device lost");
+```
+
+A Java class implements `EcpEngine.Callbacks` and overrides only the handlers it needs; the
+others are default methods. That needs the module compiled by Kotlin 2.2 or later: AGP 9's
+built-in Kotlin is, and with AGP 8 use plugin version 2.2 or newer.
 
 ### 3.2 A Java/Kotlin activity and a native core (the PSX2 pattern)
 
@@ -244,14 +299,21 @@ without touching the core's threading:
   behaviour does not change: "launched for one game", "a frontend owns the menu", "menu
   requested", "apply session settings before the VM starts", "the VM thread ended". PSX2's
   `MainActivity` already has hooks of this shape.
-- **Kotlin speaks ECP; the core does the work.** `EcpEngine` runs the socket on its own thread and
-  delivers requests on the main thread. Answer from wherever the work finishes.
+- **Kotlin speaks ECP; the core does the work.** `EcpEngine` runs the socket on its own thread.
+  By default it runs request handlers one at a time, in order, on a background thread of its
+  own, so a handler may call a JNI function that blocks for seconds (a state save). `stop` and
+  `onClosed` run on a separate control thread, so the end of a session never waits behind a slow
+  request. Your `handleStop` may therefore run while another handler is still busy: make
+  shutdown safe against that. Handlers that only touch UI state can run on the main thread
+  instead: `EcpEngine(descriptor, callbacks, EcpEngine.MAIN_THREAD)`. Answer from wherever the
+  work finishes.
 - **Settings go into the core in memory only**, through one JNI call such as
   `ecpSetIniValue(section, key, value)`. They are never saved to the app's preferences.
 
 ```kotlin
 class EcpPlayActivity : MainActivity(), EcpEngine.Callbacks {
     private var engine: EcpEngine? = null
+    @Volatile private var resumedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -280,30 +342,44 @@ class EcpPlayActivity : MainActivity(), EcpEngine.Callbacks {
     }
 
     override fun handleResume(r: EcpEngine.Request) {
-        NativeApp.resetKeyStatus()     // ignore buttons still held (SPEC 6.1)
+        resumedAt = SystemClock.uptimeMillis()   // see "held buttons" below
+        NativeApp.resetKeyStatus()
         NativeApp.resume()
         r.ok()
         engine?.resumed()
     }
 
+    // Runs on the SDK's request thread, so it may block until the core has written the state.
+    // No paused/resumed around it: that pause is internal.
     override fun handleSaveState(r: EcpEngine.Request) {
         val slot = r.int("slot")
-        emuExecutor.execute {          // off the main thread; answer when done
-            if (!saveStateToPath(statePath(slot))) return@execute r.error("internal", "The state could not be saved.")
-            r.ok(JSONObject().put("slot", slot).put("time", System.currentTimeMillis() / 1000)
-                .put("thumbnail", Ecp.picture(captureFrame())))
-        }
+        if (!NativeApp.saveStateToSlot(slot)) return r.error("internal", "The state could not be saved.")
+        r.ok(JSONObject().put("slot", slot).put("time", System.currentTimeMillis() / 1000)
+            .put("thumbnail", Ecp.picture(captureFrame())))
     }
 
-    override fun handleStop(r: EcpEngine.Request) {
+    override fun handleStop(r: EcpEngine.Request) {   // on the control thread
         r.ok()
         engine?.stopped("frontend")
-        shutdownVmAndFinish()
+        runOnUiThread { shutdownVmAndFinish() }
     }
 
-    override fun onClosed(reason: String?) = shutdownVmAndFinish()   // saves memory cards, finishes
+    override fun onClosed(reason: String?) = runOnUiThread { shutdownVmAndFinish() }   // saves memory cards
 }
 ```
+
+**Held buttons.** SPEC 6.1 says buttons still held when the game resumes are ignored until they
+are released. A list of held keys goes stale while the frontend has the input, so compare times
+instead. Drop every key event that went down before the resume, and clear the core's pad state:
+
+```kotlin
+override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    if (event.downTime < resumedAt) return true   // pressed before the game resumed: drop it
+    return super.dispatchKeyEvent(event)
+}
+```
+
+Do the same when the menu opens, so the chord's keys never reach the game.
 
 Send `firstFrame()` and `running()` once the core presents its first frame. Hook the place where
 you hide your loading spinner. Send `perf(...)` once a second from your existing FPS counter.
@@ -327,9 +403,12 @@ starting app is in the foreground:
 override fun onFrontendMenuRequested(source: String) {   // your menu hotkey, Back, a touch button
     val e = engine ?: return
     NativeApp.pause()
-    e.requestMenu(this, captureFrame())   // paused(menu) + menu_request + MENU_INTENT
+    e.requestMenu(this, captureFrame())   // paused(menu) if not yet reported, menu_request, MENU_INTENT
 }
 ```
+
+`captureFrame()` should return the game's frame at its internal resolution and display aspect
+(2.6), not a copy of the window.
 
 `requestMenu()` fires the frontend's `MENU_INTENT` PendingIntent with the sender's
 background-activity-start opt-in (`ActivityOptions.setPendingIntentBackgroundActivityStartMode`,
@@ -387,6 +466,11 @@ python conformance/ecp-probe.py --adb com.izzy2lost.psx2/.EcpPlayActivity \
     --content content://... --first-frame-timeout 120 --menu-timeout 30
 ```
 
+To test the menu chord on a device without touching it, press the chord through adb while the
+probe waits for `menu_request`. For L3+R3: `adb shell input keycombination KEYCODE_BUTTON_THUMBL KEYCODE_BUTTON_THUMBR`
+(Android 13 and later). adb cannot pass `MENU_INTENT`, so the frontend's menu does not appear,
+but `paused` and `menu_request` still arrive and are checked.
+
 Without `--content`, the probe launches a dummy file, which a real emulator rightly refuses with
 `content_invalid`. Pass a real game. With `--adb`, pass a URI the app can read, or let the probe
 push a dummy file to `/data/local/tmp`. The probe saves states under a fresh `game_id` and
@@ -403,8 +487,10 @@ session/stdio  load_state empty slot is slot_empty PASS       0 ms  error slot_e
 111 passed, 0 failed, 0 warnings, 0 skipped
 ```
 
-`WARN` rows (fast-forward not visible in `perf`, a screenshot after `load_state` that differs
-from the one before `save_state`) do not fail the run, but look into them. On failure the probe
+`WARN` rows do not fail the run, but look into them. Fast-forward not visible in `perf` is
+usually a frame limiter that stayed on. A screenshot after `load_state` that differs from the one
+before `save_state` is expected from an engine that redraws only when a frame runs: while paused
+it still shows the old frame. On failure the probe
 prints the directory with your engine's log.
 
 For frontend developers, `examples/test-engine` is the other half. It runs on desktop
@@ -424,11 +510,12 @@ APK (`sdk/android`: `gradlew assembleRelease`), where a tap or L3+R3 asks for th
       `res/raw/ecp.json` plus the PLAY intent filter and meta-data (Android).
 - [ ] `--ecp stdio` and `--ecp tcp:127.0.0.1:<port>` (token from `ECP_TOKEN`) on desktop; the
       PORT/TOKEN extras on Android, with a connection within 10 s.
-- [ ] No window, wizard or profile picker before `launch`.
+- [ ] Nothing interactive before `launch`: no window on desktop; black or a neutral loading screen
+      on Android; no wizard or profile picker.
 - [ ] `launch`: answered once loading begins; typed errors for missing BIOS, keys or firmware and
       for bad content.
-- [ ] `loading` (optional), `first_frame` when the picture is up, `running`.
-- [ ] `stop`: answer, `stopped` (`frontend`), exit within 5 s.
+- [ ] `loading` (optional), `first_frame` when the game's own first frame is up, `running`.
+- [ ] `stop`: answer, `stopped` (`frontend`), exit within 5 s, never queued behind a slow request.
 - [ ] Channel lost: save battery saves and exit within 5 s; never run headless.
 - [ ] Unknown requests answered `unsupported` (the SDKs do this).
 - [ ] `ecp-probe` passes.
@@ -436,14 +523,16 @@ APK (`sdk/android`: `gradlew assembleRelease`), where a tap or L3+R3 asks for th
 ### Level 2, per capability
 
 - [ ] `pause`: `pause`/`resume` within 500 ms with `paused`/`resumed`; held buttons ignored after
-      `resume`; `paused` with `focus` when the player leaves through the system.
-- [ ] `menu`: `menu_chord` detected; `paused` (`menu`) + `menu_request` with the frame; Android
-      sends MENU_INTENT while in the foreground; your own pause menu never opens; `resume` raises
-      the game.
+      `resume`; `paused` with `focus` when the player leaves through the system; internal pauses
+      (state save/load) not reported.
+- [ ] `menu`: `menu_chord` detected; `paused` (`menu`) + `menu_request` with the frame at the
+      game's aspect; Android sends MENU_INTENT while in the foreground; your own pause menu never
+      opens; `resume` works without `pause` and raises the game.
 - [ ] `states`: slots 0-99 by `game_id`; `slot_empty` and `state_incompatible`; `list_states`
       and `delete_state`. `state_thumbnails`: a picture with each state.
 - [ ] `settings`: schema with the standard keys where they apply; `launch.settings` applied
-      before boot; `set_setting` answers `applied`; nothing written to your config.
+      before boot (and again after `first_frame` if per-game settings overwrite them);
+      `set_setting` answers `applied`; nothing written to your config.
 - [ ] `fast_forward` / `slow_motion`: `set_speed`; `perf.speed` follows.
 - [ ] `perf`: about once a second while running.
 - [ ] `screenshot`, `reset`, `rewind`, `volume`, `hud`, `notify`, `cheats`, `discs`: each answers

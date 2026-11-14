@@ -6,6 +6,8 @@ settings, screenshots and performance, on Windows, Linux, macOS and Android.
 
 - [SPEC.md](SPEC.md): the protocol, version 1.
 - [GUIDE.md](GUIDE.md): how to add ECP to an emulator.
+  [PSX2's ECP.md](https://github.com/Denarmo/PSX2/blob/ecp/ECP.md) is the worked example: a
+  PCSX2-based Android emulator at level 2.
 - `schema/`: JSON Schemas (draft 2020-12) for the descriptor, every message and every result, and
   [the system ids](schema/systems.md).
 - `sdk/c/`: the engine-side library in portable C11 (`ecp.h`, `ecp.c`).
@@ -31,5 +33,9 @@ c++ -std=c++17 -O2 sdk/cpp-frontend/example.cpp -o build/cpp-example   # add -lw
 # Android library and test engine APK (examples/test-engine/android/build/outputs/apk/release)
 cd sdk/android && ./gradlew assembleRelease testDebugUnitTest
 ```
+
+To use the Android library in an app, vendor `sdk/android/ecp` as a Gradle module. Its build file
+works with AGP 9's built-in Kotlin (Java-only apps included) and with AGP 8 plus the Kotlin
+plugin; see GUIDE.md, section 3.1.
 
 MIT licensed. First used by [EmuDEN](https://github.com/Denarmo/emuden); not tied to it.
