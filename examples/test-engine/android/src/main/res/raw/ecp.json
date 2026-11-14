@@ -1,0 +1,13 @@
+{
+  "ecp": 1,
+  "id": "io.github.ecp.testengine",
+  "name": "ECP Test Engine",
+  "version": "1.0.0",
+  "level": 2,
+  "systems": ["nes", "snes", "gb", "gbc", "gba", "nds", "n64", "psx", "ps2", "psp", "gamecube", "wii", "switch"],
+  "extensions": ["ecptest", "bin", "iso", "rom"],
+  "capabilities": ["pause", "menu", "states", "state_thumbnails", "reset", "fast_forward", "slow_motion",
+                   "rewind", "settings", "screenshot", "perf", "hud", "notify", "volume", "cheats", "discs"],
+  "needs": [],
+  "settings": "schema"
+}
