@@ -275,14 +275,13 @@ class PlayActivity : Activity(), EcpEngine.Callbacks, Choreographer.FrameCallbac
         r.ok()
     }
 
+    // set_speed sets the whole speed state: fast_forward false, factor 1, or neither is normal.
     override fun handleSetSpeed(r: EcpEngine.Request) {
-        val factor = r.double("factor")
-        if (r.msg.has("fast_forward")) {
-            fastForward = r.bool("fast_forward")
-            if (fastForward && factor >= 1) game.apply("speed.fast_forward_factor", factor.coerceAtMost(10.0))
-        } else if (factor > 0) {
-            slowFactor = factor.coerceIn(0.1, 1.0)
-        }
+        val factor = r.double("factor", 1.0)
+        fastForward = r.bool("fast_forward")
+        slowFactor = 1.0
+        if (fastForward && factor > 1) game.apply("speed.fast_forward_factor", factor.coerceAtMost(10.0))
+        else if (!fastForward && factor > 0 && factor < 1) slowFactor = factor.coerceAtLeast(0.1)
         r.ok()
     }
 

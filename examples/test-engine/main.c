@@ -3,7 +3,7 @@
  * It "plays" any file by drawing a moving pattern into an off-screen framebuffer. Its whole game
  * state is the frame counter, which the pattern shows, so a loaded state is easy to verify.
  *
- *   test-engine --ecp stdio [--menu-after <s>] [--fail <code>] [--data <dir>]
+ *   test-engine --ecp stdio [--menu-after <s>] [--fail <code>] [--data <dir>] [--without <cap>]
  *   test-engine --ecp tcp:127.0.0.1:<port>      (token in ECP_TOKEN)
  *   test-engine --ecp-describe | --ecp-oneshot describe|schema|status|verify
  *   test-engine <file> [--seconds <n>]           (level 0: plays headless for n seconds)
@@ -36,9 +36,19 @@ static const char *const k_caps[] = {
     "oneshot", NULL};
 static const char *const k_needs[] = {NULL};
 
-static const ecp_descriptor k_desc = {
+static const char *g_caps[sizeof k_caps / sizeof *k_caps]; /* k_caps minus --without */
+static ecp_descriptor k_desc = {
     "io.github.ecp.testengine", "ECP Test Engine", "1.0.0", 2,
     k_systems, k_extensions, k_caps, k_needs, 1};
+
+/* --without <capability>: leave one out, to test how a frontend copes. */
+static void drop_capability(const char *cap) {
+    size_t n = 0;
+    for (const char *const *c = k_desc.capabilities; *c; c++)
+        if (strcmp(*c, cap)) g_caps[n++] = *c;
+    g_caps[n] = NULL;
+    k_desc.capabilities = g_caps;
+}
 
 /* ---- settings -------------------------------------------------------------------------- */
 
@@ -294,7 +304,7 @@ static void on_launch(void *user, ecp_conn *c, const ecp_request *r) {
 static void on_stop(void *user, ecp_conn *c, const ecp_request *r) {
     app *a = (app *)user;
     ecp_reply_ok(c, r->id);
-    ecp_send_stopped(c, "frontend", NULL, NULL);
+    ecp_send_stopped(c, "frontend", NULL, NULL, NULL);
     a->quit = 1;
 }
 
@@ -446,16 +456,16 @@ static void on_reset(void *user, ecp_conn *c, const ecp_request *r) {
     ecp_reply_ok(c, r->id);
 }
 
+/* set_speed sets the whole speed state: fast_forward false, factor 1, or neither is normal. */
 static void on_set_speed(void *user, ecp_conn *c, const ecp_request *r) {
     app *a = (app *)user;
-    const ecp_json *ff = ecp_json_get(r->msg, "fast_forward");
-    double factor = ecp_json_num(ecp_json_get(r->msg, "factor"), 0);
-    if (ff) {
-        a->fast_forward = ecp_json_bool(ff, 0);
-        if (a->fast_forward && factor >= 1) a->values[setting_index("speed.fast_forward_factor")].num = factor > 10 ? 10 : factor;
-    } else if (factor > 0) {
-        a->slow_factor = factor > 1 ? 1 : factor < 0.1 ? 0.1 : factor;
-    }
+    double factor = ecp_json_num(ecp_json_get(r->msg, "factor"), 1);
+    a->fast_forward = ecp_json_bool(ecp_json_get(r->msg, "fast_forward"), 0);
+    a->slow_factor = 1;
+    if (a->fast_forward && factor > 1)
+        a->values[setting_index("speed.fast_forward_factor")].num = factor > 10 ? 10 : factor;
+    else if (!a->fast_forward && factor > 0 && factor < 1)
+        a->slow_factor = factor < 0.1 ? 0.1 : factor;
     ecp_reply_ok(c, r->id);
 }
 
@@ -708,6 +718,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--fail") && i + 1 < argc) snprintf(a.fail_code, sizeof a.fail_code, "%s", argv[++i]);
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) snprintf(a.data_dir, sizeof a.data_dir, "%s", argv[++i]);
         else if (!strcmp(argv[i], "--seconds") && i + 1 < argc) seconds = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--without") && i + 1 < argc) drop_capability(argv[++i]);
         else file = argv[i];
     }
     if (cfg.describe) return ecp_print_descriptor(&k_desc);
