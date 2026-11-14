@@ -173,7 +173,7 @@ typedef struct ecp_handlers {
     /* level 1 */
     ecp_handler launch, stop;
     /* level 2, by capability */
-    ecp_handler pause, resume;                                     /* pause */
+    ecp_handler pause, resume;                                     /* pause; resume also menu */
     ecp_handler save_state, load_state, list_states, delete_state; /* states */
     ecp_handler get_schema, get_settings, set_setting;             /* settings */
     ecp_handler reset;                                             /* reset */
@@ -229,10 +229,11 @@ int ecp_send_loading(ecp_conn *c, double progress /* < 0: none */, const char *t
 int ecp_send_first_frame(ecp_conn *c);
 int ecp_send_running(ecp_conn *c);
 int ecp_send_stopped(ecp_conn *c, const char *reason, const char *error_code /* reason "error" */,
-                     const char *message);
+                     const char *message, const char *detail);
 int ecp_send_paused(ecp_conn *c, const char *reason);
 int ecp_send_resumed(ecp_conn *c);
-/* Sends paused (reason "menu") and then menu_request with the paused frame. */
+/* Sends paused (reason "menu") unless paused was already reported, then menu_request with the
+ * paused frame. Do not report your internal pauses (state save/load) with ecp_send_paused(). */
 int ecp_send_menu_request(ecp_conn *c, const void *pixels, int width, int height, int stride,
                           int flags);
 

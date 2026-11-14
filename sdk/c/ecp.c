@@ -865,6 +865,7 @@ struct ecp_conn {
 #endif
     ecp_mutex send_lock, id_lock;
     int open, closed_reported;
+    int paused_reported; /* the last of paused/resumed sent was paused */
     unsigned char *rbuf;
     size_t rlen, rcap;
     const ecp_descriptor *desc;
@@ -988,18 +989,23 @@ int ecp_send_loading(ecp_conn *c, double progress, const char *text) {
 
 int ecp_send_first_frame(ecp_conn *c) { return send_simple(c, "first_frame"); }
 int ecp_send_running(ecp_conn *c) { return send_simple(c, "running"); }
-int ecp_send_resumed(ecp_conn *c) { return send_simple(c, "resumed"); }
+int ecp_send_resumed(ecp_conn *c) {
+    c->paused_reported = 0;
+    return send_simple(c, "resumed");
+}
 
-int ecp_send_stopped(ecp_conn *c, const char *reason, const char *code, const char *message) {
+int ecp_send_stopped(ecp_conn *c, const char *reason, const char *code, const char *message,
+                     const char *detail) {
     ecp_writer w;
     ecp_msg_event(&w, "stopped");
     ecp_w_kstring(&w, "reason", reason);
-    if (code) ecp_w_error(&w, code, message, NULL);
+    if (code) ecp_w_error(&w, code, message, detail);
     return ecp_send(c, &w);
 }
 
 int ecp_send_paused(ecp_conn *c, const char *reason) {
     ecp_writer w;
+    c->paused_reported = 1;
     ecp_msg_event(&w, "paused");
     ecp_w_kstring(&w, "reason", reason);
     return ecp_send(c, &w);
@@ -1008,7 +1014,7 @@ int ecp_send_paused(ecp_conn *c, const char *reason) {
 int ecp_send_menu_request(ecp_conn *c, const void *pixels, int width, int height, int stride,
                           int flags) {
     ecp_writer w;
-    if (ecp_send_paused(c, "menu")) return -1;
+    if (!c->paused_reported && ecp_send_paused(c, "menu")) return -1;
     ecp_msg_event(&w, "menu_request");
     ecp_w_picture_rgba(&w, "frame", pixels, width, height, stride, flags);
     return ecp_send(c, &w);
@@ -1245,7 +1251,7 @@ typedef struct route {
 #define R(t, c, c2) {#t, offsetof(ecp_handlers, t), c, c2}
 static const route k_routes[] = {
     R(launch, NULL, NULL),          R(stop, NULL, NULL),
-    R(pause, "pause", NULL),        R(resume, "pause", NULL),
+    R(pause, "pause", NULL),        R(resume, "pause", "menu"), /* resume also ends the menu */
     R(save_state, "states", NULL),  R(load_state, "states", NULL),
     R(list_states, "states", NULL), R(delete_state, "states", NULL),
     R(get_schema, "settings", NULL), R(get_settings, "settings", NULL),
