@@ -7,13 +7,19 @@ import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.IOException
 import java.net.Socket
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Framing over a socket: a 4-byte little-endian length, then UTF-8 JSON (section 4). */
+/**
+ * Framing over a socket: a 4-byte little-endian length, then UTF-8 JSON (section 4).
+ * Frames are written by a thread of the channel's own, so [send] may be called from any thread,
+ * the main thread included (Android forbids network writes there).
+ */
 internal class EcpChannel(private val socket: Socket) {
     private val input = DataInputStream(BufferedInputStream(socket.getInputStream()))
     private val output = BufferedOutputStream(socket.getOutputStream())
     private val open = AtomicBoolean(true)
+    private val queue = LinkedBlockingQueue<ByteArray>()
 
     val isOpen: Boolean get() = open.get()
 
@@ -45,24 +51,36 @@ internal class EcpChannel(private val socket: Socket) {
         return null
     }
 
+    /** Queues a frame; false once the channel is closed or the frame is too big. */
     fun send(msg: JSONObject): Boolean {
         val body = msg.toString().toByteArray(Charsets.UTF_8)
-        if (body.size > Ecp.MAX_FRAME) return false
+        if (body.size > Ecp.MAX_FRAME || !open.get()) return false
         val n = body.size
-        val hdr = byteArrayOf(n.toByte(), (n shr 8).toByte(), (n shr 16).toByte(), (n shr 24).toByte())
-        synchronized(output) {
-            if (!open.get()) return false
-            return try {
-                output.write(hdr)
-                output.write(body)
-                output.flush()
-                true
-            } catch (_: IOException) {
-                close()
-                false
-            }
-        }
+        val frame = ByteArray(4 + n)
+        frame[0] = n.toByte(); frame[1] = (n shr 8).toByte(); frame[2] = (n shr 16).toByte(); frame[3] = (n shr 24).toByte()
+        System.arraycopy(body, 0, frame, 4, n)
+        queue.put(frame)
+        return true
     }
+
+    private val writer = Thread({
+        try {
+            while (true) {
+                val frame = queue.take()
+                if (frame.isEmpty()) break // close(): what was queued before it is written
+                output.write(frame)
+                if (queue.isEmpty()) output.flush()
+            }
+            output.flush()
+        } catch (_: IOException) {
+        } catch (_: InterruptedException) {
+        }
+        open.set(false)
+        try {
+            socket.close()
+        } catch (_: IOException) {
+        }
+    }, "ecp-writer").apply { isDaemon = true; start() }
 
     /** Reads on a daemon thread until the channel closes. */
     fun startReader(name: String, onMessage: (JSONObject) -> Unit, onClosed: () -> Unit) {
@@ -72,12 +90,8 @@ internal class EcpChannel(private val socket: Socket) {
         }, name).apply { isDaemon = true }.start()
     }
 
+    /** Writes what was already sent, then closes the socket. */
     fun close() {
-        if (open.getAndSet(false)) {
-            try {
-                socket.close()
-            } catch (_: IOException) {
-            }
-        }
+        if (open.getAndSet(false)) queue.put(ByteArray(0))
     }
 }
