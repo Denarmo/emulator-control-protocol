@@ -166,20 +166,24 @@ The engine opens a TCP connection to `127.0.0.1:PORT` within 10 s of being start
 **Engine → frontend (events)**
 
 - `loading`: `progress` (0–1, optional), `text` (optional)
-- `first_frame`: the game is on screen. Play time counts from here.
+- `first_frame`: the first frame the game itself drew is on screen. A black or blank frame the
+  emulator shows while it boots does not count. Play time counts from here.
 - `running`
 - `stopped`: `reason` (`user`, `frontend`, `error`) and `error` when `reason` is `error`. The
   engine exits after sending it.
 
 ## 6. Session controls (level 2)
 
-Every request below needs the capability in its heading.
+Every request below needs the capability in its heading. `resume` is the exception: it is
+valid with `pause` or with `menu`, because it ends the menu hand-over (6.2).
 
 ### 6.1 `pause`
 
 - `pause` and `resume` are requests. `resume` puts the engine back in the foreground if it isn't.
   Buttons still held at that moment MUST be ignored until they are released.
-- `paused` (event): `reason`, one of `frontend`, `menu`, `focus`, `applet`.
+- `paused` (event): `reason`, one of `frontend`, `menu`, `focus`, `applet`. It reports a pause
+  the frontend can see. The engine does not report the short pauses it takes internally, for
+  example while it writes or reads a state.
 - `resumed` (event)
 
 ### 6.2 `menu`: the frontend's menu over the game
@@ -187,8 +191,9 @@ Every request below needs the capability in its heading.
 1. The player presses the menu combination. The frontend sends it in `launch` as
    `menu_chord: ["l3","r3"]` (RetroPad button names, section 8). The engine MAY also offer its own
    way in, such as a touch button.
-2. The engine pauses, sends `paused` with `reason:"menu"`, then the `menu_request` event with
-   `frame`, the paused picture (`{"png":...,"width":...,"height":...}`).
+2. The engine pauses, sends `paused` with `reason:"menu"` (unless it has already reported
+   `paused`), then the `menu_request` event with `frame`, the paused picture
+   (`{"png":...,"width":...,"height":...}`).
 3. **Android:** the engine then sends `MENU_INTENT`. The engine is in the foreground, so Android
    lets this start the frontend's activity. **Desktop:** the frontend raises its own window.
 4. The frontend draws its menu over `frame` and sends whatever the player chose: `save_state`,
@@ -202,8 +207,13 @@ its own quick buttons, such as an on-screen fast-forward.
 
 ### 6.3 `states`
 
-The engine stores the states in its own data, by `game_id` and slot. Slot 0 is the frontend's
-resume slot; 1–99 are the player's.
+The engine stores the states in its own data, per game and slot. It keys them by `game_id`, or by
+its own per-game identity (such as a disc serial or CRC) when it has one. The slots used through
+ECP MAY be the same ones the engine's own UI shows. Slot 0 is the frontend's resume slot: the
+frontend saves to it when the player leaves and loads it when they come back, and does not
+show it as a player slot. Slots 1–99 are the player's.
+
+A state saved before `first_frame` MAY have no thumbnail.
 
 - `save_state` (request): `slot`. The result has `slot`, `time` (Unix seconds) and `thumbnail`
   (picture, if `state_thumbnails`).
@@ -250,7 +260,7 @@ a frontend.
 | Capability | Request | Fields |
 |---|---|---|
 | `reset` | `reset` | `hard` (bool) |
-| `fast_forward` | `set_speed` | `fast_forward` (bool), `factor` (optional) |
+| `fast_forward` | `set_speed` | `fast_forward` (bool), `factor` (optional, > 1) |
 | `slow_motion` | `set_speed` | `factor` < 1 |
 | `rewind` | `set_rewind` | `on` (bool) |
 | `screenshot` | `screenshot` | result: `image` (picture), or `path` on desktop |
@@ -259,6 +269,11 @@ a frontend.
 | `notify` | `notify` | `text`, `seconds`: a toast drawn by the engine |
 | `cheats` | `set_cheats` | `cheats: [{code, enabled, description}]` |
 | `discs` | `list_discs`, `set_disc` | `list_discs` result: `discs: [{index, label}]`, `current`; `set_disc`: `index` |
+
+`set_speed` sets the whole speed state. `fast_forward:false`, or `factor:1` without
+`fast_forward`, is normal speed. `fast_forward:true` without `factor` uses the engine's own
+fast-forward speed (`speed.fast_forward_factor` if it has it). A request with neither field is
+normal speed.
 
 Events:
 
@@ -288,9 +303,11 @@ right`. Positions follow the SNES layout (`b` is the bottom face button).
 
 ## 9. Rules for engines
 
-- No window before `launch`. Nothing kept from a session's settings. No profile selector: one
-  player.
-- Saves and states live in the engine's own storage, keyed by `game_id`.
+- Nothing interactive before `launch`. On desktop that means no window. On Android the PLAY
+  activity is on screen from the moment it starts, so it shows black (or a neutral loading
+  screen) until the game boots, with no menus or prompts.
+- Nothing kept from a session's settings. No profile selector: one player.
+- Saves and states live in the engine's own storage, per game (section 6.3).
 - An engine that loses the channel during a session saves and exits; it never keeps running
   headless.
 - Everything that changes the game (states, cheats, discs) happens only when the frontend asks.
