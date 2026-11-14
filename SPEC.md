@@ -87,7 +87,7 @@ do). It then pins the package name and signing certificate digest, or the downlo
   log. This is the default, and the frontend starts the engine as its child.
 - `--ecp tcp:127.0.0.1:<port>`: the engine connects to the frontend, which listens on loopback
   only. The token is in the environment variable named by `--ecp-token-env`, never on the command
-  line.
+  line. Without `--ecp-token-env` the variable is `ECP_TOKEN`.
 
 The game arrives in `launch` (section 5), not on the command line. The frontend SHOULD tie the
 engine's life to its own: a Windows job object with kill-on-close, or a Linux process group with
@@ -124,7 +124,8 @@ The engine opens a TCP connection to `127.0.0.1:PORT` within 10 s of being start
   constant time. One connection per session.
 - **Messages:** `{"type":"<name>","id":<integer, optional>, ...fields}`.
   - A **request** carries `id`. Its answer is
-    `{"type":"result","id":<same>,"ok":true|false,"error":{...}, ...result fields}`.
+    `{"type":"result","id":<same>,"ok":true|false,"error":{...}, ...result fields}`. `error` is
+    present only when `ok` is false.
   - Messages without `id` are **events**.
   - Unknown types and unknown fields MUST be ignored. A request of an unknown type is answered with
     `ok:false` and the code `unsupported`.
@@ -155,6 +156,7 @@ The engine opens a TCP connection to `127.0.0.1:PORT` within 10 s of being start
   - `system`, `game_id` (the frontend's stable id, for per-game data)
   - `title`, `locale`, `fullscreen`
   - `settings` (level 2: resolved values by key, section 6.4)
+  - `menu_chord` (with `menu`, section 6.2)
 
   The result arrives once loading has begun. A failure carries a typed error: `bios_missing`,
   `content_invalid` and so on.
@@ -185,8 +187,8 @@ Every request below needs the capability in its heading.
 1. The player presses the menu combination. The frontend sends it in `launch` as
    `menu_chord: ["l3","r3"]` (RetroPad button names, section 8). The engine MAY also offer its own
    way in, such as a touch button.
-2. The engine pauses and sends `menu_request` with `frame`, the paused picture
-   (`{"png":...,"width":...,"height":...}`).
+2. The engine pauses, sends `paused` with `reason:"menu"`, then the `menu_request` event with
+   `frame`, the paused picture (`{"png":...,"width":...,"height":...}`).
 3. **Android:** the engine then sends `MENU_INTENT`. The engine is in the foreground, so Android
    lets this start the frontend's activity. **Desktop:** the frontend raises its own window.
 4. The frontend draws its menu over `frame` and sends whatever the player chose: `save_state`,
@@ -211,8 +213,8 @@ resume slot; 1–99 are the player's.
 
 ### 6.4 `settings`
 
-The engine publishes its settings with the `schema` one-shot or the `get_schema` request. That is a
-list of setting objects: `key`, `label`, `help`, `type` (`toggle`, `choice`, `range`, `text`),
+The engine publishes its settings with the `schema` one-shot or the `get_schema` request; both
+answer with `settings`, a list of setting objects: `key`, `label`, `help`, `type` (`toggle`, `choice`, `range`, `text`),
 `choices` (`[[value,label]]`), `min`, `max`, `step`, `default`, `group`, and `applies` (`now`,
 `restart`).
 
@@ -236,7 +238,7 @@ in its own menus without knowing the engine:
 
 Requests:
 
-- `get_settings`: the current values.
+- `get_settings`: the result has `values`, the current values by key.
 - `set_setting`: `key` and `value`. The result has `applied`, one of `now`, `restart` or `no`.
 
 The engine stores no setting it got through ECP. The frontend owns the player's choices and sends
@@ -251,12 +253,12 @@ a frontend.
 | `fast_forward` | `set_speed` | `fast_forward` (bool), `factor` (optional) |
 | `slow_motion` | `set_speed` | `factor` < 1 |
 | `rewind` | `set_rewind` | `on` (bool) |
-| `screenshot` | `screenshot` | result: picture, or `path` on desktop |
+| `screenshot` | `screenshot` | result: `image` (picture), or `path` on desktop |
 | `volume` | `set_volume` | `percent` 0–100, `mute` (bool) |
-| `hud` | `hud_level` | 0–3: off, fps, timing, full |
+| `hud` | `hud_level` | `level` 0–3: off, fps, timing, full |
 | `notify` | `notify` | `text`, `seconds`: a toast drawn by the engine |
 | `cheats` | `set_cheats` | `cheats: [{code, enabled, description}]` |
-| `discs` | `list_discs`, `set_disc` | `index` |
+| `discs` | `list_discs`, `set_disc` | `list_discs` result: `discs: [{index, label}]`, `current`; `set_disc`: `index` |
 
 Events:
 
@@ -296,6 +298,6 @@ right`. Positions follow the SNES layout (`b` is the bottom face button).
 ## 10. Conformance
 
 `conformance/` holds a test frontend (`ecp-probe`). It starts an engine, drives every capability
-it lists, and checks the answers and timings: hello within 10 s, `first_frame`, pause within
-500 ms, a state saved and loaded, `stop` within 5 s. An engine is ECP-conformant at the level it
+it lists, and checks the answers and timings: hello within 10 s, `first_frame`, pause (result and
+`paused` event) within 500 ms, a state saved and loaded, `stop` within 5 s. An engine is ECP-conformant at the level it
 claims when the probe passes.
