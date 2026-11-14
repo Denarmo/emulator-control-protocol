@@ -646,6 +646,8 @@ def level2(args, s, rep, sec, caps, transport, log_dir):
                    "speed %s" % (speeds[-1] if speeds else "?"), warn=True)
         res, ms = s.request("set_speed", fast_forward=False)
         rep.ok(sec, "set_speed fast_forward off", result_ok(res), describe_detail(res), ms)
+        res, ms = s.request("set_speed")  # neither field: normal speed (SPEC 6.5)
+        rep.ok(sec, "set_speed {} (normal speed)", result_ok(res), describe_detail(res), ms)
     else:
         skip("fast_forward")
 
@@ -707,7 +709,8 @@ def states(s, rep, sec, has, paused):
         shot, _ = s.request("screenshot")
         _, after = check_picture((shot or {}).get("image"), "image")
         rep.ok(sec, "load_state restores the picture", after == shot_before,
-               "" if after == shot_before else "the screenshot after loading differs from the one before saving",
+               "" if after == shot_before else "the screenshot after loading differs from the one before saving; "
+               "an engine that redraws only when a frame runs may show the old frame while paused",
                warn=True)
 
     res, ms = s.request("delete_state", slot=1)
