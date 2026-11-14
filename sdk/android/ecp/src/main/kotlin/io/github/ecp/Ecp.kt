@@ -23,6 +23,10 @@ object Ecp {
 
     const val MAX_FRAME = 16 * 1024 * 1024
 
+    /** 127.0.0.1, as SPEC section 3 says. Not getLoopbackAddress(), which is ::1 on Android. */
+    @JvmField
+    val LOOPBACK: java.net.InetAddress = java.net.InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
+
     /**
      * The capabilities that allow each request (section 6): any one of them will do, and an empty
      * list means every engine handles it. `resume` also ends the menu hand-over (6.2).

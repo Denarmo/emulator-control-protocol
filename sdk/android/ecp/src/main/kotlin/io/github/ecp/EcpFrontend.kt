@@ -11,7 +11,6 @@ import android.os.Build
 import android.util.Log
 import org.json.JSONObject
 import java.io.IOException
-import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.SocketTimeoutException
 import java.security.MessageDigest
@@ -184,7 +183,7 @@ class EcpSession @JvmOverloads constructor(
         fun onClosed(session: EcpSession, reason: String) {}
     }
 
-    private val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+    private val server = ServerSocket(0, 1, Ecp.LOOPBACK)
     private val hello = JSONObject().put("type", "hello").put("protocol", Ecp.PROTOCOL)
         .put("frontend", frontendName).put("version", frontendVersion)
     private val pending = ConcurrentHashMap<Long, (JSONObject?) -> Unit>()

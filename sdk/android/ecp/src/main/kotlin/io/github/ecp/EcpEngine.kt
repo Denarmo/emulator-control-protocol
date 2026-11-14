@@ -13,7 +13,6 @@ import android.os.Looper
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executor
@@ -183,7 +182,7 @@ class EcpEngine @JvmOverloads constructor(
         Thread({
             try {
                 val socket = Socket()
-                socket.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), session.port), 10_000)
+                socket.connect(InetSocketAddress(Ecp.LOOPBACK, session.port), 10_000)
                 val ch = EcpChannel(socket)
                 channel = ch
                 ch.send(JSONObject().put("type", "auth").put("token", session.token))
