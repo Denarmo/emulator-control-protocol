@@ -209,8 +209,8 @@ class Closed(Exception):
 
 
 class Session:
-    def __init__(self, cmd, transport, schemas, log_dir, label):
-        self.cmd, self.transport, self.schemas = cmd, transport, schemas
+    def __init__(self, cmd, transport, schemas, log_dir, label, adb=None):
+        self.cmd, self.transport, self.schemas, self.adb = cmd, transport, schemas, adb
         self.inbox = queue.Queue()
         self.events = []      # (time, msg) for every event, in order
         self.requests = {}    # id -> type, to validate results
@@ -228,20 +228,33 @@ class Session:
     def start(self):
         args = list(self.cmd)
         env = dict(os.environ)
-        if self.transport == "tcp":
+        server = None
+        if self.transport in ("tcp", "adb"):
             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server.bind(("127.0.0.1", 0))
             server.listen(1)
             server.settimeout(10)
-            args += ["--ecp", "tcp:127.0.0.1:%d" % server.getsockname()[1]]
+            port = server.getsockname()[1]
+            args += ["--ecp", "tcp:127.0.0.1:%d" % port]
             env["ECP_TOKEN"] = self.token
         else:
             args += ["--ecp", "stdio"]
         self.started = time.monotonic()
-        self.proc = subprocess.Popen(args, stdin=subprocess.PIPE if self.transport == "stdio" else subprocess.DEVNULL,
-                                     stdout=subprocess.PIPE if self.transport == "stdio" else self.log,
-                                     stderr=self.log, env=env, bufsize=0)
-        if self.transport == "tcp":
+        if self.adb:
+            # The engine's loopback port on the device reaches this listener through adb reverse.
+            self.adb.run("reverse", "tcp:%d" % port, "tcp:%d" % port)
+            self.adb.run("shell", "am", "start", "-n", self.adb.component, "-a", "io.github.ecp.action.PLAY",
+                         "--ei", "io.github.ecp.extra.PORT", str(port), "--es", "io.github.ecp.extra.TOKEN", self.token,
+                         "--es", "io.github.ecp.extra.SESSION", "ecp-probe", "-d", self.adb.data_uri)
+            self.port = port
+        else:
+            stdio = self.transport == "stdio"
+            self.proc = subprocess.Popen(args, stdin=subprocess.PIPE if stdio else subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE if stdio else self.log,
+                                         stderr=self.log, env=env, bufsize=0)
+        self.auth = None
+        self.connected = self.started
+        if server:
             try:
                 self.sock, _ = server.accept()
             finally:
@@ -249,11 +262,7 @@ class Session:
             self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             self.connected = time.monotonic()
             self.auth = self._read_frame()
-            self.inbox_reader = threading.Thread(target=self._reader, daemon=True)
-        else:
-            self.connected = self.started
-            self.auth = None
-            self.inbox_reader = threading.Thread(target=self._reader, daemon=True)
+        self.inbox_reader = threading.Thread(target=self._reader, daemon=True)
         self.inbox_reader.start()
 
     def _read_exact(self, n):
@@ -365,6 +374,15 @@ class Session:
             pass
 
     def wait_exit(self, timeout):
+        """The exit code, or None if the engine is still running. On Android an engine finishes its
+        activity rather than its process, so there the channel closing counts as the exit."""
+        if self.adb:
+            deadline = time.monotonic() + timeout
+            try:
+                while time.monotonic() < deadline: self._next(deadline - time.monotonic())
+            except Closed:
+                return 0
+            return None
         try:
             return self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -374,8 +392,33 @@ class Session:
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
             self.proc.wait()
+        if self.adb:
+            self.adb.run("shell", "am", "force-stop", self.adb.component.split("/")[0])
+            if getattr(self, "port", None): self.adb.run("reverse", "--remove", "tcp:%d" % self.port)
         if self.sock: self.sock.close()
         self.log.close()
+
+
+class Adb:
+    """An Android engine reached with adb: `component` is package/activity."""
+
+    def __init__(self, component, serial, content, log_dir, ext):
+        self.component, self.serial = component, serial
+        self.exe = shutil.which("adb") or os.path.join(os.environ.get("ANDROID_HOME", os.environ.get(
+            "ANDROID_SDK_ROOT", "")), "platform-tools", "adb")
+        if content:
+            self.data_uri = content
+        else:
+            local = os.path.join(log_dir, "ecp-probe-game." + ext)
+            with open(local, "wb") as f: f.write(b"ECP probe dummy content\n")
+            remote = "/data/local/tmp/ecp-probe-game." + ext
+            self.run("push", local, remote)
+            self.run("shell", "chmod", "644", remote)
+            self.data_uri = "file://" + remote
+
+    def run(self, *args):
+        cmd = [self.exe] + (["-s", self.serial] if self.serial else []) + list(args)
+        return subprocess.run(cmd, capture_output=True, timeout=30)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -440,14 +483,14 @@ def run_oneshots(cmd, desc, schemas, rep):
 
 def run_session(args, cmd, desc, schemas, rep, transport, log_dir, content, launch_settings):
     sec = "session/" + transport
-    s = Session(cmd, transport, schemas, log_dir, transport)
+    s = Session(cmd, transport, schemas, log_dir, transport, getattr(args, "adb_conn", None))
     try:
         try:
             s.start()
         except socket.timeout:
             rep.add(sec, "connects within 10 s", "FAIL", "the engine never connected")
             return
-        if transport == "tcp":
+        if transport in ("tcp", "adb"):
             rep.ok(sec, "connects within 10 s", s.connected - s.started <= 10, ms=(s.connected - s.started) * 1000)
             a = s.auth or {}
             rep.ok(sec, "first frame is auth with the token", a.get("type") == "auth" and a.get("token") == s.token,
@@ -607,8 +650,10 @@ def level2(args, s, rep, sec, caps, transport, log_dir):
         problem, _ = check_picture((res or {}).get("image"), "image") if result_ok(res) else (describe_detail(res), None)
         rep.ok(sec, "screenshot inline", problem is None, problem or "", ms)
         path = os.path.join(log_dir, "screenshot-%s.png" % transport)
-        res, ms = s.request("screenshot", path=path)
-        if result_ok(res) and "image" in res:
+        res, ms = s.request("screenshot", path=path) if transport != "adb" else (None, None)
+        if transport == "adb":
+            rep.add(sec, "screenshot to a file", "SKIP", "desktop only")
+        elif result_ok(res) and "image" in res:
             rep.add(sec, "screenshot to a file", "PASS", "answered inline (allowed)", ms)
         else:
             try:
@@ -695,7 +740,7 @@ def settings(s, rep, sec):
 
 def run_close_test(args, cmd, schemas, rep, transport, log_dir, content):
     sec = "session/" + transport
-    s = Session(cmd, transport, schemas, log_dir, transport + "-close")
+    s = Session(cmd, transport, schemas, log_dir, transport + "-close", getattr(args, "adb_conn", None))
     try:
         s.start()
         hello, _ = s.wait_event("hello", 10)
@@ -726,15 +771,26 @@ def main():
                     help="seconds to wait for the engine's menu_request (0: skip)")
     ap.add_argument("--first-frame-timeout", type=float, default=60)
     ap.add_argument("--keep-logs", action="store_true", help="keep the engine logs and screenshots")
+    ap.add_argument("--adb", metavar="PACKAGE/ACTIVITY",
+                    help="test an Android engine on the device adb sees, through adb reverse; --content is then a "
+                         "URI on the device (default: a dummy file pushed to /data/local/tmp)")
+    ap.add_argument("--adb-serial", help="adb device serial")
+    ap.add_argument("--adb-ext", default="bin", help="extension of the dummy file pushed with --adb")
     ap.add_argument("engine", nargs=argparse.REMAINDER)
     args = ap.parse_args()
-    cmd = [a for a in args.engine if a != "--"][:]
-    if args.engine and args.engine[0] == "--": cmd = args.engine[1:]
-    if not cmd: ap.error("no engine command given")
+    cmd = args.engine[1:] if args.engine and args.engine[0] == "--" else list(args.engine)
+    if not cmd and not args.adb: ap.error("no engine command given")
 
     schemas = Schemas(SCHEMA_DIR)
     rep = Report()
     log_dir = tempfile.mkdtemp(prefix="ecp-probe-")
+
+    if args.adb:
+        args.adb_conn = Adb(args.adb, args.adb_serial, args.content, log_dir, args.adb_ext)
+        rep.add("describe", "--ecp-describe", "SKIP", "Android: the descriptor comes in hello")
+        run_session(args, [], None, schemas, rep, "adb", log_dir, "intent", {})
+        run_close_test(args, [], schemas, rep, "adb", log_dir, "intent")
+        return finish(args, rep, log_dir)
 
     desc = None
     try:
@@ -772,6 +828,10 @@ def main():
         run_session(args, cmd, desc, schemas, rep, transport, log_dir, content, launch_settings)
         run_close_test(args, cmd, schemas, rep, transport, log_dir, content)
 
+    return finish(args, rep, log_dir)
+
+
+def finish(args, rep, log_dir):
     rep.print()
     if args.keep_logs or rep.failed():
         print("engine logs: %s" % log_dir)
