@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/notify.schema.json",
+  "title": "notify (request): a toast drawn by the engine",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "text"
+  ],
+  "properties": {
+    "type": {
+      "const": "notify"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "text": {
+      "type": "string"
+    },
+    "seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/set_setting.schema.json",
+  "title": "set_setting (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "key",
+    "value"
+  ],
+  "properties": {
+    "type": {
+      "const": "set_setting"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "key": {
+      "type": "string"
+    },
+    "value": {
+      "$ref": "../common.schema.json#/$defs/setting_value"
+    }
+  }
+}

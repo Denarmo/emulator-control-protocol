@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/applet_request.schema.json",
+  "title": "result of applet_request (frontend to engine)",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "text": {
+      "description": "For kind \"text\": what the player entered.",
+      "type": "string"
+    }
+  }
+}

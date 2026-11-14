@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/descriptor.schema.json",
+  "title": "ECP engine descriptor",
+  "type": "object",
+  "required": [
+    "ecp",
+    "id",
+    "name",
+    "version",
+    "level",
+    "systems"
+  ],
+  "properties": {
+    "ecp": {
+      "const": 1
+    },
+    "id": {
+      "description": "Android package name, or a reverse-DNS name on desktop.",
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "systems": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/system_id"
+      },
+      "minItems": 1
+    },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9.]+$"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/capability"
+      },
+      "uniqueItems": true
+    },
+    "needs": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "bios",
+          "keys",
+          "firmware"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "settings": {
+      "description": "\"schema\": the engine answers the schema one-shot and get_schema.",
+      "enum": [
+        "schema"
+      ]
+    }
+  }
+}

@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/common.schema.json",
+  "title": "ECP common definitions",
+  "$defs": {
+    "capability": {
+      "enum": [
+        "pause",
+        "menu",
+        "states",
+        "state_thumbnails",
+        "reset",
+        "fast_forward",
+        "slow_motion",
+        "rewind",
+        "settings",
+        "screenshot",
+        "perf",
+        "hud",
+        "notify",
+        "volume",
+        "cheats",
+        "discs",
+        "applets",
+        "oneshot"
+      ]
+    },
+    "error_code": {
+      "enum": [
+        "unsupported",
+        "busy",
+        "protocol",
+        "internal",
+        "content_missing",
+        "content_invalid",
+        "bios_missing",
+        "firmware_missing",
+        "keys_missing",
+        "gpu_unsupported",
+        "out_of_memory",
+        "crashed",
+        "slot_empty",
+        "state_incompatible"
+      ]
+    },
+    "button": {
+      "description": "RetroPad button name (SNES layout).",
+      "enum": [
+        "a",
+        "b",
+        "x",
+        "y",
+        "l",
+        "r",
+        "l2",
+        "r2",
+        "l3",
+        "r3",
+        "select",
+        "start",
+        "up",
+        "down",
+        "left",
+        "right"
+      ]
+    },
+    "system_id": {
+      "description": "A system id from systems.md.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "slot": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 99
+    },
+    "request_id": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "description": "One of the spec's codes; unknown codes are treated as internal.",
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "message": {
+          "description": "For the player.",
+          "type": "string"
+        },
+        "detail": {
+          "description": "For the log.",
+          "type": "string"
+        }
+      }
+    },
+    "picture": {
+      "type": "object",
+      "required": [
+        "png",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "png": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "contentMediaType": "image/png"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "setting_value": {
+      "type": [
+        "string",
+        "number",
+        "boolean"
+      ]
+    },
+    "setting": {
+      "type": "object",
+      "required": [
+        "key",
+        "label",
+        "type"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "help": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "toggle",
+            "choice",
+            "range",
+            "text"
+          ]
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "$ref": "#/$defs/setting_value"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "default": {
+          "$ref": "#/$defs/setting_value"
+        },
+        "group": {
+          "type": "string"
+        },
+        "applies": {
+          "enum": [
+            "now",
+            "restart"
+          ]
+        }
+      }
+    },
+    "state_info": {
+      "type": "object",
+      "required": [
+        "slot",
+        "time"
+      ],
+      "properties": {
+        "slot": {
+          "$ref": "#/$defs/slot"
+        },
+        "time": {
+          "description": "Unix seconds.",
+          "type": "integer"
+        },
+        "thumbnail": {
+          "$ref": "#/$defs/picture"
+        }
+      }
+    },
+    "result": {
+      "description": "The answer to a request. error is present only when ok is false.",
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "ok"
+      ],
+      "properties": {
+        "type": {
+          "const": "result"
+        },
+        "id": {
+          "$ref": "#/$defs/request_id"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/$defs/error"
+        }
+      },
+      "if": {
+        "properties": {
+          "ok": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      }
+    }
+  }
+}

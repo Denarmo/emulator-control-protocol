@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/list_discs.schema.json",
+  "title": "list_discs (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "const": "list_discs"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    }
+  }
+}

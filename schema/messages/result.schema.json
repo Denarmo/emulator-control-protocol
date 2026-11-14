@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/result.schema.json",
+  "title": "result (either direction)",
+  "$ref": "../common.schema.json#/$defs/result"
+}

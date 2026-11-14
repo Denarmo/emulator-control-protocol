@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/menu_request.schema.json",
+  "title": "menu_request (event): the player asked for the frontend's menu",
+  "type": "object",
+  "required": [
+    "type",
+    "frame"
+  ],
+  "properties": {
+    "type": {
+      "const": "menu_request"
+    },
+    "frame": {
+      "$ref": "../common.schema.json#/$defs/picture"
+    }
+  }
+}

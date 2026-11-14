@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/stopped.schema.json",
+  "title": "stopped (event): the engine exits after sending it",
+  "type": "object",
+  "required": [
+    "type",
+    "reason"
+  ],
+  "properties": {
+    "type": {
+      "const": "stopped"
+    },
+    "reason": {
+      "enum": [
+        "user",
+        "frontend",
+        "error"
+      ]
+    },
+    "error": {
+      "$ref": "../common.schema.json#/$defs/error"
+    }
+  },
+  "if": {
+    "properties": {
+      "reason": {
+        "const": "error"
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "then": {
+    "required": [
+      "error"
+    ]
+  }
+}

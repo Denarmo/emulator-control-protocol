@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/set_cheats.schema.json",
+  "title": "set_cheats (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "cheats"
+  ],
+  "properties": {
+    "type": {
+      "const": "set_cheats"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "cheats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

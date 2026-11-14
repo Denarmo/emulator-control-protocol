@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/set_setting.schema.json",
+  "title": "result of set_setting",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "applied": {
+      "enum": [
+        "now",
+        "restart",
+        "no"
+      ]
+    }
+  },
+  "if": {
+    "properties": {
+      "ok": {
+        "const": true
+      }
+    },
+    "required": [
+      "ok"
+    ]
+  },
+  "then": {
+    "required": [
+      "applied"
+    ]
+  }
+}

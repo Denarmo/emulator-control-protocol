@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/hud_level.schema.json",
+  "title": "hud_level (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "level"
+  ],
+  "properties": {
+    "type": {
+      "const": "hud_level"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "level": {
+      "description": "0 off, 1 fps, 2 timing, 3 full.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3
+    }
+  }
+}

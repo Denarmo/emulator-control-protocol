@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/screenshot.schema.json",
+  "title": "screenshot (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "const": "screenshot"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "path": {
+      "description": "Desktop only: write the PNG here instead of answering inline.",
+      "type": "string"
+    }
+  }
+}

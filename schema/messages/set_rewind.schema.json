@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/set_rewind.schema.json",
+  "title": "set_rewind (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "on"
+  ],
+  "properties": {
+    "type": {
+      "const": "set_rewind"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "on": {
+      "type": "boolean"
+    }
+  }
+}

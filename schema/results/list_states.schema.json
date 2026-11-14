@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/list_states.schema.json",
+  "title": "result of list_states",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "states": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/$defs/state_info"
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "ok": {
+        "const": true
+      }
+    },
+    "required": [
+      "ok"
+    ]
+  },
+  "then": {
+    "required": [
+      "states"
+    ]
+  }
+}

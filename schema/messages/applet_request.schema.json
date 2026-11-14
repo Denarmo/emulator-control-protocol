@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/applet_request.schema.json",
+  "title": "applet_request (engine to frontend request, with applets)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "kind"
+  ],
+  "properties": {
+    "type": {
+      "const": "applet_request"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "kind": {
+      "description": "What the engine needs, e.g. \"text\".",
+      "type": "string"
+    },
+    "prompt": {
+      "type": "string"
+    },
+    "initial": {
+      "type": "string"
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

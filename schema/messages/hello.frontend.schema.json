@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/hello.frontend.schema.json",
+  "title": "hello (frontend to engine)",
+  "type": "object",
+  "required": [
+    "type",
+    "protocol",
+    "frontend",
+    "version",
+    "level",
+    "capabilities"
+  ],
+  "properties": {
+    "type": {
+      "const": "hello"
+    },
+    "protocol": {
+      "const": 1
+    },
+    "frontend": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/$defs/capability"
+      },
+      "uniqueItems": true
+    }
+  }
+}

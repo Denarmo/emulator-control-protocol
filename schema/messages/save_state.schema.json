@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/save_state.schema.json",
+  "title": "save_state (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "slot"
+  ],
+  "properties": {
+    "type": {
+      "const": "save_state"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "slot": {
+      "$ref": "../common.schema.json#/$defs/slot"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/launch.schema.json",
+  "title": "launch (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id",
+    "content"
+  ],
+  "properties": {
+    "type": {
+      "const": "launch"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "content": {
+      "description": "A path, or \"intent\" on Android for the intent's data.",
+      "type": "string",
+      "minLength": 1
+    },
+    "system": {
+      "$ref": "../common.schema.json#/$defs/system_id"
+    },
+    "game_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "locale": {
+      "type": "string"
+    },
+    "fullscreen": {
+      "type": "boolean"
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "../common.schema.json#/$defs/setting_value"
+      }
+    },
+    "menu_chord": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/$defs/button"
+      },
+      "minItems": 1
+    }
+  }
+}

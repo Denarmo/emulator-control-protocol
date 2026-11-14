@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/get_settings.schema.json",
+  "title": "get_settings (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "const": "get_settings"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    }
+  }
+}

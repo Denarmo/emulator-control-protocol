@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/save_state.schema.json",
+  "title": "result of save_state",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "slot": {
+      "$ref": "../common.schema.json#/$defs/slot"
+    },
+    "time": {
+      "type": "integer"
+    },
+    "thumbnail": {
+      "$ref": "../common.schema.json#/$defs/picture"
+    }
+  },
+  "if": {
+    "properties": {
+      "ok": {
+        "const": true
+      }
+    },
+    "required": [
+      "ok"
+    ]
+  },
+  "then": {
+    "required": [
+      "slot",
+      "time"
+    ]
+  }
+}

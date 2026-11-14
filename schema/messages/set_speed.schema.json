@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/set_speed.schema.json",
+  "title": "set_speed (request): fast_forward, or slow motion with factor < 1",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "const": "set_speed"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "fast_forward": {
+      "type": "boolean"
+    },
+    "factor": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

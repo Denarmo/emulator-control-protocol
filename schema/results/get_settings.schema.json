@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/get_settings.schema.json",
+  "title": "result of get_settings",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "values": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "../common.schema.json#/$defs/setting_value"
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "ok": {
+        "const": true
+      }
+    },
+    "required": [
+      "ok"
+    ]
+  },
+  "then": {
+    "required": [
+      "values"
+    ]
+  }
+}

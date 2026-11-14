@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/perf.schema.json",
+  "title": "perf (event), about once a second",
+  "type": "object",
+  "required": [
+    "type",
+    "fps",
+    "target_fps",
+    "speed",
+    "frame_ms"
+  ],
+  "properties": {
+    "type": {
+      "const": "perf"
+    },
+    "fps": {
+      "type": "number",
+      "minimum": 0
+    },
+    "target_fps": {
+      "type": "number",
+      "minimum": 0
+    },
+    "speed": {
+      "description": "1.0 is full speed.",
+      "type": "number",
+      "minimum": 0
+    },
+    "frame_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "cpu_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "gpu_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "shaders_building": {
+      "type": "boolean"
+    }
+  }
+}

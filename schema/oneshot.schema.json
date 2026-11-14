@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/oneshot.schema.json",
+  "title": "ECP one-shot results (--ecp-oneshot <command>)",
+  "$defs": {
+    "describe": {
+      "$ref": "descriptor.schema.json"
+    },
+    "schema": {
+      "type": "object",
+      "required": [
+        "settings"
+      ],
+      "properties": {
+        "settings": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/setting"
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "object",
+      "required": [
+        "ready"
+      ],
+      "properties": {
+        "ready": {
+          "type": "boolean"
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/error"
+          }
+        }
+      }
+    },
+    "install_request": {
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "verify_request": {
+      "type": "object",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "common.schema.json#/$defs/error"
+        }
+      }
+    },
+    "outcome": {
+      "description": "install-bios, install-firmware, install-keys",
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "common.schema.json#/$defs/error"
+        }
+      }
+    }
+  }
+}
