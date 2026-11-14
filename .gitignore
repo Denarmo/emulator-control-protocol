@@ -1,0 +1,8 @@
+build/
+test-engine-data/
+.gradle/
+local.properties
+**/build/
+.idea/
+*.iml
+__pycache__/

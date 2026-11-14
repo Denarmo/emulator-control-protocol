@@ -1,0 +1,17 @@
+# ECP engine-side library. Add with add_subdirectory(), or compile ecp.c into your own target.
+cmake_minimum_required(VERSION 3.16)
+project(ecp C)
+
+add_library(ecp STATIC ecp.c)
+target_include_directories(ecp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(ecp PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+if(WIN32)
+  target_link_libraries(ecp PUBLIC ws2_32)
+elseif(NOT ANDROID)
+  find_package(Threads REQUIRED)
+  target_link_libraries(ecp PUBLIC Threads::Threads)
+endif()
+if(NOT MSVC)
+  target_link_libraries(ecp PUBLIC m)
+  target_compile_options(ecp PRIVATE -Wall -Wextra)
+endif()
