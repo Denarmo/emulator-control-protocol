@@ -107,6 +107,14 @@ explicit intent:
 | `io.github.ecp.extra.SESSION` | String | The session id, for the engine's log. |
 | `io.github.ecp.extra.MENU_INTENT` | PendingIntent | Brings the frontend's menu forward (section 6.2). |
 | `io.github.ecp.extra.FULLSCREEN` | boolean | Immersive mode. Default true. |
+| `io.github.ecp.extra.COVER` | Uri | Optional. An image of the frontend's screen as it was when it started the game, as a `content://` URI granted with the intent's `ClipData`. |
+| `io.github.ecp.extra.COVER_COLOR` | int | Optional. The ARGB colour behind `COVER`. Default black. |
+
+The change of app should not be seen. The frontend starts the activity with no window animation
+(`FLAG_ACTIVITY_NO_ANIMATION`). The engine SHOULD give the activity no starting window
+(`android:windowDisablePreview`) and no system bars, and SHOULD cover its screen from its first
+draw until `first_frame` (section 5): with `COVER` scaled to fill it, on `COVER_COLOR`, or black
+without them. It SHOULD also keep its own on-screen notifications off while a frontend drives it.
 
 The frontend picks the display (`ActivityOptions.setLaunchDisplayId`), so on a dual-screen device
 the game can run on one screen while the frontend stays on the other. An engine started without
