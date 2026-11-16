@@ -148,6 +148,7 @@ class EcpEngine @JvmOverloads constructor(
         fun handleSetCheats(r: Request) = r.unsupported()
         fun handleListDiscs(r: Request) = r.unsupported()
         fun handleSetDisc(r: Request) = r.unsupported()
+        fun handleConfigure(r: Request) = r.unsupported()
 
         /** The frontend's hello: its name, level and the capabilities it will use. */
         fun onHello(frontend: JSONObject) {}
@@ -332,6 +333,7 @@ class EcpEngine @JvmOverloads constructor(
             "set_cheats" -> handleSetCheats(r)
             "list_discs" -> handleListDiscs(r)
             "set_disc" -> handleSetDisc(r)
+            "configure" -> handleConfigure(r)
             else -> r.unsupported()
         }
     }

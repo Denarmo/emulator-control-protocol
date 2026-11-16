@@ -698,7 +698,7 @@ double ecp_time_ms(void) {
 static const char *const k_caps[] = {
     "pause", "menu", "states", "state_thumbnails", "reset", "fast_forward", "slow_motion",
     "rewind", "settings", "screenshot", "perf", "hud", "notify", "volume", "cheats", "discs",
-    "applets", "oneshot", NULL};
+    "applets", "oneshot", "configure", NULL};
 
 static int in_list(const char *const *list, const char *s) {
     for (; list && *list; list++)

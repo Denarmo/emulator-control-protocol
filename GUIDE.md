@@ -446,6 +446,34 @@ ecp_conn *c = ecp_open(&cfg, &desc, &handlers, app, err, sizeof err);   /* from 
 The MENU_INTENT still has to be sent from Java (`EcpEngine.sendMenuIntent(context, pendingIntent)`),
 so call up into Java after `ecp_send_menu_request()`.
 
+### 3.6 Being set up by the frontend (`configure`)
+
+A player who starts games from a frontend should not meet your first-run wizard when they later
+open your app on its own. List `configure` and implement `handleConfigure`, and declare the
+out-of-session receiver too:
+
+```xml
+<receiver android:name=".EcpConfigureReceiver" android:exported="true">
+    <intent-filter>
+        <action android:name="io.github.ecp.action.CONFIGURE" />
+    </intent-filter>
+</receiver>
+```
+
+The receiver reads `JSONObject(intent.getStringExtra(Ecp.EXTRA_CONFIGURE))` and hands it, off the
+main thread (`goAsync()`), to the same code as `handleConfigure`. That code:
+
+1. For each `bios` location: a tree URI is listed with `DocumentsContract`
+   (`buildChildDocumentsUriUsingTree`), a document URI read directly. Copy what your BIOS check
+   accepts into your own BIOS folder; skip files you already have.
+2. For each `game_folders` URI: `takePersistableUriPermission(uri, FLAG_GRANT_READ_URI_PERMISSION)`,
+   then store it where your own folder picker stores its result, replacing the folders the last
+   `configure` stored (keep a list of those apart from the player's own).
+3. Store `settings` where your settings screen keeps them.
+4. Mark your first-run setup done if the BIOS and a game folder are now in place.
+
+PSX2 ECP's `EcpConfigure.java` is a worked example.
+
 ## 4. Testing with ecp-probe
 
 `conformance/ecp-probe.py` is a test frontend that needs only the Python 3 standard library. It
@@ -538,4 +566,7 @@ APK (`sdk/android`: `gradlew assembleRelease`), where a tap or L3+R3 asks for th
 - [ ] `screenshot`, `reset`, `rewind`, `volume`, `hud`, `notify`, `cheats`, `discs`: each answers
       as SPEC 6.5 says.
 - [ ] `oneshot` (desktop): `describe`, `schema`, `status`; exit code 0 when `ok`.
+- [ ] `configure`: BIOS files imported, game folders kept (persistable grants taken on Android),
+      settings stored, first-run setup marked done; opening the app on its own afterwards shows
+      no wizard. The Android receiver does the same outside a session.
 - [ ] `ecp-probe` passes with every capability listed.

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/results/configure.schema.json",
+  "title": "result of configure",
+  "$ref": "../common.schema.json#/$defs/result",
+  "properties": {
+    "bios": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "BIOS files the engine now has from what was sent."
+    },
+    "game_folders": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Folders the engine kept."
+    },
+    "settings": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Settings it stored."
+    },
+    "setup_done": {
+      "type": "boolean",
+      "description": "The engine's own first-run setup is complete."
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "$ref": "../common.schema.json#/$defs/error"
+      }
+    }
+  }
+}

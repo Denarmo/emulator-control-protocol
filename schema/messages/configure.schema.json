@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Denarmo/emulator-control-protocol/main/schema/messages/configure.schema.json",
+  "title": "configure (request)",
+  "type": "object",
+  "required": [
+    "type",
+    "id"
+  ],
+  "properties": {
+    "type": {
+      "const": "configure"
+    },
+    "id": {
+      "$ref": "../common.schema.json#/$defs/request_id"
+    },
+    "bios": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Files or folders holding the player's BIOS, firmware or key files. Absolute paths on desktop; content:// URIs on Android (a folder is a document tree URI)."
+    },
+    "game_folders": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Folders holding the player's games for the engine's systems. Absolute paths on desktop; content:// URIs on Android (a folder is a document tree URI)."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "../common.schema.json#/$defs/setting_value"
+      }
+    }
+  }
+}

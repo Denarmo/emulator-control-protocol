@@ -22,7 +22,8 @@
         "cheats",
         "discs",
         "applets",
-        "oneshot"
+        "oneshot",
+        "configure"
       ]
     },
     "error_code": {

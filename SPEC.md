@@ -27,7 +27,8 @@ what is missing.
 
 Capabilities: `pause`, `menu` (menu hand-over), `states`, `state_thumbnails`, `reset`,
 `fast_forward`, `slow_motion`, `rewind`, `settings`, `screenshot`, `perf`, `hud`, `notify`,
-`volume`, `cheats`, `discs` (multi-disc swap), `applets`, `oneshot`.
+`volume`, `cheats`, `discs` (multi-disc swap), `applets`, `oneshot`, `configure` (the engine's
+own setup, section 6.6).
 
 ## 2. Discovery
 
@@ -251,7 +252,7 @@ Requests:
 - `get_settings`: the result has `values`, the current values by key.
 - `set_setting`: `key` and `value`. The result has `applied`, one of `now`, `restart` or `no`.
 
-The engine stores no setting it got through ECP. The frontend owns the player's choices and sends
+The engine stores no setting it got through `launch` or `set_setting`. The frontend owns the player's choices and sends
 them again in `launch`. An engine's own settings screen MAY still exist for when it is used without
 a frontend.
 
@@ -274,6 +275,41 @@ a frontend.
 `fast_forward`, is normal speed. `fast_forward:true` without `factor` uses the engine's own
 fast-forward speed (`speed.fast_forward_factor` if it has it). A request with neither field is
 normal speed.
+
+### 6.6 `configure`: the engine's own setup
+
+A frontend that already has the player's BIOS files and game folders can set the engine up with
+them, so the engine opened on its own (from the app list or the desktop) skips its first-run
+setup and lists the same games with the same settings.
+
+- `configure` (request): every field is optional.
+  - `bios`: locations of files or folders holding the player's BIOS, firmware or key files. The
+    engine imports the ones it recognises into its own storage on the same device and ignores
+    the rest. It never sends them anywhere.
+  - `game_folders`: locations of folders holding the player's games for the engine's systems.
+    They replace the folders an earlier `configure` gave; folders the player added in the engine
+    stay.
+  - `settings`: values by key (6.4). The engine stores them as its own settings.
+
+  The result has `bios` (BIOS files the engine has from what was sent), `game_folders` (folders
+  it kept), `settings` (values it stored), `setup_done` (its first-run setup is complete) and
+  `problems` (typed errors, such as `bios_missing` when none of the files was a usable BIOS).
+- Unlike `launch` settings, what `configure` carries is kept. It only adds: it never deletes the
+  player's saves, states, BIOS files or own folders.
+- Locations: absolute paths on desktop. On Android, `content://` URIs: a folder is a document tree
+  URI (`DocumentsContract.buildTreeDocumentUri`), a file a document URI. The frontend grants them
+  with `Context.grantUriPermission` (read; for folders also `FLAG_GRANT_PREFIX_URI_PERMISSION` and
+  `FLAG_GRANT_PERSISTABLE_URI_PERMISSION`), and the engine takes the persistable permission of the
+  folders it keeps.
+- In a session the frontend sends `configure` after hello and before `launch`, and waits for its
+  result, so a BIOS it carries is in place for the game.
+- **Outside a session (Android):** an engine with `configure` MAY declare a receiver for the
+  action `io.github.ecp.action.CONFIGURE`. The frontend sends it an explicit broadcast whose
+  String extra `io.github.ecp.extra.CONFIGURE` holds the request's fields as a JSON object, once
+  the engine is installed and whenever the locations or settings change. There is no answer.
+  Any app can send that broadcast, so an engine applies it only additively as above, and MAY
+  ignore senders it does not know (on Android 14 and later, `BroadcastReceiver.getSentFromPackage`
+  when the frontend shares its identity).
 
 Events:
 
@@ -306,7 +342,8 @@ right`. Positions follow the SNES layout (`b` is the bottom face button).
 - Nothing interactive before `launch`. On desktop that means no window. On Android the PLAY
   activity is on screen from the moment it starts, so it shows black (or a neutral loading
   screen) until the game boots, with no menus or prompts.
-- Nothing kept from a session's settings. No profile selector: one player.
+- Nothing kept from a session's settings (only `configure` is kept). No profile selector: one
+  player.
 - Saves and states live in the engine's own storage, per game (section 6.3).
 - An engine that loses the channel during a session saves and exits; it never keeps running
   headless.

@@ -21,6 +21,11 @@ object Ecp {
     const val EXTRA_FULLSCREEN = "io.github.ecp.extra.FULLSCREEN"
     const val EXTRA_PATH = "io.github.ecp.extra.PATH"
 
+    /** The engine's setup outside a session (section 6.6): a broadcast to its receiver. */
+    const val ACTION_CONFIGURE = "io.github.ecp.action.CONFIGURE"
+    /** The configure request's fields, as a JSON object in a String. */
+    const val EXTRA_CONFIGURE = "io.github.ecp.extra.CONFIGURE"
+
     const val MAX_FRAME = 16 * 1024 * 1024
 
     /** 127.0.0.1, as SPEC section 3 says. Not getLoopbackAddress(), which is ::1 on Android. */
@@ -42,6 +47,7 @@ object Ecp {
         "screenshot" to listOf("screenshot"), "set_volume" to listOf("volume"), "hud_level" to listOf("hud"),
         "notify" to listOf("notify"), "set_cheats" to listOf("cheats"),
         "list_discs" to listOf("discs"), "set_disc" to listOf("discs"),
+        "configure" to listOf("configure"),
     )
 
     /** An error object: `{"code":..., "message":..., "detail":...}`. */
